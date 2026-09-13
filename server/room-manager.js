@@ -3,25 +3,12 @@
 const { randomUUID, randomBytes, randomInt, createHash, timingSafeEqual } = require("node:crypto");
 const State = require("../js/state.js");
 
-class RoomError extends Error {
-  constructor(code, message) { super(message); this.code = code; }
-}
-const fail = (code, message) => { throw new RoomError(code, message); };
+const { RoomError, fail, object, text, number } = require("./validation.js");
+const { CheckManager } = require("./check-manager.js");
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const hash = (token) => createHash("sha256").update(token).digest();
-function object(value, keys) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !keys.includes(key))) fail("INVALID_PAYLOAD", "Invalid request fields.");
-}
-function text(value, label, max = 120) {
-  if (typeof value !== "string" || !value.trim() || value.trim().length > max || /[\u0000-\u001f]/.test(value)) fail("INVALID_PAYLOAD", `${label} must contain 1–${max} readable characters.`);
-  return value.trim();
-}
-function number(value, max) {
-  if ((typeof value !== "number" && typeof value !== "string") || value === "" || !Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) > max) fail("INVALID_PAYLOAD", "Invalid numeric value.");
-  return Number(value);
-}
 
-// Explicit management operations. The server never calls a dice/Check action.
+// Explicit management operations; Check intents are handled separately.
 const MANAGEMENT = {
   setAct: (args) => args.length === 1 && ["Prologue", "Act 1", "Act 2", "Act 3"].includes(args[0]),
   addOmenToBag: (args) => args.length === 0,
@@ -47,10 +34,11 @@ const MANAGEMENT = {
 };
 
 class RoomManager {
-  constructor({ log = () => {} } = {}) {
+  constructor({ log = () => {}, rng } = {}) {
     this.rooms = new Map();
     this.connections = new Map();
     this.log = log;
+    this.checks = new CheckManager(this, rng);
   }
 
   room(code) {
@@ -152,6 +140,8 @@ class RoomManager {
     object(payload, ["playerId", "characterId"]);
     const player = room.players.get(text(payload.playerId, "Player ID"));
     if (!player) fail("PLAYER_NOT_FOUND", "Player not found in this room.");
+    const check = room.gameState.currentCheck;
+    if (State.hasUnresolvedCheck(room.gameState) && (player.id === check.playerId || player.assignedCharacterId === check.characterId || payload.characterId === check.characterId)) fail("CHECK_PENDING", "Resolve or cancel the pending Check before changing its assignment.");
     if (payload.characterId !== null) text(payload.characterId, "Character ID");
     const character = room.gameState.characters.find((entry) => entry.id === payload.characterId);
     if (payload.characterId !== null && !character) fail("CHARACTER_NOT_FOUND", "Character not found.");
@@ -194,6 +184,8 @@ class RoomManager {
     object(payload, ["action", "args", "baseVersion"]);
     this.checkVersion(room, payload.baseVersion);
     if (typeof payload.action !== "string" || !Object.hasOwn(MANAGEMENT, payload.action) || !Array.isArray(payload.args) || !MANAGEMENT[payload.action](payload.args)) fail("INVALID_PAYLOAD", "Unknown or malformed management action.");
+    if (["resetGame", "importState"].includes(payload.action) && State.hasUnresolvedCheck(room.gameState)) fail("CHECK_PENDING", "Cancel or resolve the pending Check before resetting or importing.");
+    if (payload.action === "importState" && payload.args[0].currentCheck) fail("SERVER_AUTHORITATIVE", "Multiplayer imports cannot contain client Check results. Import a game with no Check.");
     const store = State.createStore({ storage: null, initialState: room.gameState });
     try {
       store[payload.action](...payload.args);
@@ -202,16 +194,9 @@ class RoomManager {
     return room;
   }
 
-  // Transitional Host-only snapshot path. No randomness or Check resolution runs here.
-  checkState(socketId, payload) {
-    const { room } = this.authorize(socketId);
-    object(payload, ["gameState", "baseVersion"]);
-    this.checkVersion(room, payload.baseVersion);
-    const oldCheck = room.gameState.currentCheck;
-    const check = payload.gameState && payload.gameState.currentCheck;
-    if (oldCheck && oldCheck.phase !== "RESOLVED" && check && (check.id !== oldCheck.id || check.act !== oldCheck.act || check.characterId !== oldCheck.characterId)) fail("INVALID_STATE", "A pending Check must retain its identity, character, and Act snapshot.");
-    this.acceptState(room, payload.gameState);
-    return room;
+  checkState(socketId) {
+    this.authorize(socketId);
+    fail("SERVER_AUTHORITATIVE", "Client Check snapshots are no longer accepted. Send a Check action request.");
   }
 
   snapshot(room) {

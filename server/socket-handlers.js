@@ -1,5 +1,6 @@
 "use strict";
 const { RoomError } = require("./room-manager.js");
+const { EVENTS } = require("./check-manager.js");
 
 function registerSocketHandlers(io, manager) {
   const broadcast = (room) => io.to(room.code).emit("room:state", manager.snapshot(room));
@@ -35,6 +36,19 @@ function registerSocketHandlers(io, manager) {
         const room = manager[method](socket.id, payload);
         broadcast(room);
         return { room: manager.snapshot(room) };
+      });
+    }
+    for (const event of EVENTS) {
+      handle(event, (payload) => {
+        const room = manager.checks.handle(socket.id, event, payload);
+        broadcast(room);
+        return { room: manager.snapshot(room) };
+      });
+    }
+    for (const event of ["check:set-dice", "check:set-result", "check:set-total", "check:set-wounds", "check:replace-pending-check"]) {
+      handle(event, () => {
+        manager.authorize(socket.id, false);
+        throw new RoomError("SERVER_AUTHORITATIVE", "Clients may request Check actions, never submit outcomes.");
       });
     }
     handle("room:sync", (payload) => {

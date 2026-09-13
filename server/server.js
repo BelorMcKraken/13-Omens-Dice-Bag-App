@@ -6,19 +6,19 @@ const { Server } = require("socket.io");
 const { RoomManager } = require("./room-manager.js");
 const { registerSocketHandlers } = require("./socket-handlers.js");
 
-function createServer({ log = console.log } = {}) {
+function createServer({ log = console.log, rng } = {}) {
   const app = express();
   app.disable("x-powered-by");
   const server = http.createServer(app);
   const io = new Server(server, { maxHttpBufferSize: 512 * 1024 });
-  const manager = new RoomManager({ log });
+  const manager = new RoomManager({ log, rng });
   registerSocketHandlers(io, manager);
   const root = path.resolve(__dirname, "..");
   // Serve only public client files. Never expose server code, tests, or dependencies.
   app.get(["/", "/index.html"], (_, res) => res.sendFile(path.join(root, "index.html")));
   app.use("/js", express.static(path.join(root, "js")));
   app.use("/css", express.static(path.join(root, "css")));
-  app.get("/health", (_, res) => res.json({ ok: true, mode: "multiplayer-pass-1" }));
+  app.get("/health", (_, res) => res.json({ ok: true, mode: "multiplayer-pass-2" }));
   return { app, server, io, manager };
 }
 
