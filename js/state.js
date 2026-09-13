@@ -25,7 +25,7 @@
     const character = newCharacter();
     return { schemaVersion: SCHEMA_VERSION, version: SCHEMA_VERSION, act: "Prologue",
       sceneNumber: 1, storyCharacterCount: 1, perishedCharacterIds: [], bag: { safe: 8, omen: 0 }, hostOmens: 13, characters: [character], selectedCharacterId: character.id,
-      settings: { autoApplyStrainFlaw: false, lockActDuringPendingCheck: true }, currentCheck: null,
+      settings: { autoApplyStrainFlaw: false, lockActDuringPendingCheck: true, allowPlayerCharacterEdits: true }, currentCheck: null,
       history: [{ time: new Date().toISOString(), text: "Game Started" }] };
   }
 
@@ -48,7 +48,7 @@
       next.selectedCharacterId = character.id;
       delete next.character;
     }
-    next.settings = { autoApplyStrainFlaw: false, lockActDuringPendingCheck: true, ...next.settings };
+    next.settings = { autoApplyStrainFlaw: false, lockActDuringPendingCheck: true, allowPlayerCharacterEdits: true, ...next.settings };
     next.history = Array.isArray(next.history) ? next.history.slice(-250) : [];
     if (Array.isArray(next.characters)) next.characters = next.characters.map((character) => ({
       safeDiceLost: 0, statusMessage: "", ...character,
@@ -101,7 +101,7 @@
     for (const character of characters) {
       if (!character || typeof character.id !== "string" || !character.id.trim() || ids.has(character.id)) { errors.push("Invalid or duplicate character ID."); continue; }
       ids.add(character.id);
-      if (typeof character.name !== "string" || !character.name.trim()) errors.push("Character names cannot be blank.");
+      if (typeof character.name !== "string" || !character.name.trim() || character.name.length > 120) errors.push("Character names cannot be blank.");
       if (!integer(character.wounds, 6) || typeof character.active !== "boolean" || typeof character.cheatDeathUsed !== "boolean" || !integer(character.safeDiceLost, 99)) errors.push("Invalid character Wounds or status.");
       if (!character.strain || typeof character.strain !== "object" || Array.isArray(character.strain) || Object.entries(character.strain).some(([key, value]) => !key.trim() || !(typeof value === "boolean" || integer(value, Number.MAX_SAFE_INTEGER)))) errors.push("Invalid character Strain.");
     }
@@ -110,11 +110,11 @@
       if (!c.perkUsage || typeof c.perkUsage !== 'object' || Array.isArray(c.perkUsage) || Object.values(c.perkUsage).some(u=>!u || typeof u.storyUsed!=='boolean' || !Array.isArray(u.actsUsed) || u.actsUsed.some(a=>!Rules.ACTS.includes(a)) || !Array.isArray(u.scenesUsed) || u.scenesUsed.some(n=>!Number.isSafeInteger(n)||n<1))) errors.push("Invalid Perk usage.");
       if (c.perks?.some(p=>p.ruleKey!=null&&!Object.hasOwn(Rules.Perks.PERK_RULES,p.ruleKey) || p.disabled!==undefined&&typeof p.disabled!=='boolean')) errors.push("Invalid Perk rule.");
       if (["archetype", "description", "notes"].some(k => typeof c[k] !== "string" || c[k].length > 4000) || typeof c.strainReliefUsed !== "boolean") errors.push("Invalid character sheet.");
-      if (!Array.isArray(c.aspects) || c.aspects.length !== 10 || c.aspects.some((a, i) => !a || a.id !== (i < 5 ? Rules.CORE_NAMES[i].toLowerCase() : `story-${i - 4}`) || a.type !== (i < 5 ? "core" : "story") || (i < 5 && a.name !== Rules.CORE_NAMES[i]) || typeof a.name !== "string" || !a.name.trim() || a.name.length > 120 || !Object.hasOwn(Rules.ASPECTS, a.rating) || typeof a.strained !== "boolean")) errors.push("Invalid Aspects: five Core and five Story slots required.");
-      for (const key of ["gear", "perks"]) if (!Array.isArray(c[key]) || c[key].length > 50 || new Set(c[key].map(e => e?.id)).size !== c[key].length || c[key].some(e => !e || typeof e.id !== "string" || !e.id || typeof e.name !== "string" || !e.name.trim() || e.name.length > 120 || typeof e.notes !== "string" || e.notes.length > 4000)) errors.push("Invalid Gear/Perks.");
+      if (!Array.isArray(c.aspects) || c.aspects.length !== 10 || c.aspects.some((a, i) => !a || a.id !== (i < 5 ? Rules.CORE_NAMES[i].toLowerCase() : `story-${i - 4}`) || a.type !== (i < 5 ? "core" : "story") || (i < 5 && a.name !== Rules.CORE_NAMES[i]) || typeof a.name !== "string" || !a.name.trim() || a.name.length > 120 || typeof a.rating !== "string" || !Object.hasOwn(Rules.ASPECTS, a.rating) || typeof a.strained !== "boolean")) errors.push("Invalid Aspects: five Core and five Story slots required.");
+      for (const key of ["gear", "perks"]) if (!Array.isArray(c[key]) || c[key].length > 50 || new Set(c[key].map(e => e?.id)).size !== c[key].length || c[key].some(e => !e || typeof e.id !== "string" || e.id.length > 120 || !e.id || typeof e.name !== "string" || !e.name.trim() || e.name.length > 120 || typeof e.notes !== "string" || e.notes.length > 4000)) errors.push("Invalid Gear/Perks.");
     }
     if (!ids.has(candidate.selectedCharacterId)) errors.push("Invalid selected character ID.");
-    if (!candidate.settings || typeof candidate.settings.autoApplyStrainFlaw !== "boolean" || typeof candidate.settings.lockActDuringPendingCheck !== "boolean") errors.push("Invalid Host settings.");
+    if (!candidate.settings || typeof candidate.settings.autoApplyStrainFlaw !== "boolean" || typeof candidate.settings.lockActDuringPendingCheck !== "boolean" || (candidate.settings.allowPlayerCharacterEdits !== undefined && typeof candidate.settings.allowPlayerCharacterEdits !== "boolean")) errors.push("Invalid Host settings.");
     if (!Array.isArray(candidate.history) || candidate.history.some((entry) => !entry || typeof entry.text !== "string" || typeof entry.time !== "string" || !Number.isFinite(Date.parse(entry.time)))) errors.push("Invalid session history.");
     const check = candidate.currentCheck;
     if (check) {
@@ -352,7 +352,7 @@
 
   function setSetting(key, value) {
     return commit((draft) => {
-      if (!["autoApplyStrainFlaw", "lockActDuringPendingCheck"].includes(key) || typeof value !== "boolean") throw new Error("Invalid setting.");
+      if (!["autoApplyStrainFlaw", "lockActDuringPendingCheck", "allowPlayerCharacterEdits"].includes(key) || typeof value !== "boolean") throw new Error("Invalid setting.");
       draft.settings[key] = value;
     });
   }
@@ -417,7 +417,7 @@
       if(rule.type==='lucky') {
         const luck=Rules.getAspect(c,'luck');
         check.originalAspectId??=check.configuration.aspectId;check.originalAspectName??=check.configuration.aspect;
-        check.effectiveAspectId='luck';Object.assign(check.configuration,{aspectId:'luck',aspect:luck.name,rating:luck.rating,baseTn:Rules.ASPECTS[luck.rating]});
+        check.effectiveAspectId='luck';Object.assign(check.configuration,{aspectId:'luck',aspect:luck.name,rating:luck.rating,baseTn:Rules.getTargetNumberForRating(luck.rating)});
         check.finalTn=Rules.determineFinalTN(check.configuration.baseTn,check.configuration.difficultyModifier);
         check.automaticFlaws=Rules.automaticFlawSources(draft,'luck',check);
       }
@@ -443,6 +443,38 @@
     },draft=>{const c=draft.characters.find(c=>c.id===id),p=c.perks.find(p=>p.id===perkId);return c.name+' used '+p.name+' in '+(draft.currentCheck?.act||draft.act)+(aspectId?' and removed '+Rules.getAspect(c,aspectId).name+' Strain':'')+'.';});
   }
 
+  const characterKeys = Object.keys(newCharacter());
+  function exportCharacter(id) {
+    const c = state.characters.find(c => c.id === id);
+    if (!c) throw new Error("Character not found.");
+    const character = Object.fromEntries(characterKeys.map(k => [k, JSON.parse(JSON.stringify(c[k]))]));
+    character.perkUsage = Object.fromEntries(Object.entries(c.perkUsage).map(([key,u])=>[key,{storyUsed:u.storyUsed,actsUsed:[...u.actsUsed],scenesUsed:[...u.scenesUsed]}]));
+    character.aspects = c.aspects.map(({id,type,name,rating,strained}) => ({id,type,name,rating,strained}));
+    character.perks = c.perks.map(({id,name,notes,ruleKey,disabled}) => ({id,name,notes,ruleKey:ruleKey||null,disabled:!!disabled}));
+    character.gear = c.gear.map(({id,name,notes}) => ({id,name,notes}));
+    return {type:"13-omens-character", version:1, exportedAt:new Date().toISOString(), character};
+  }
+  function importCharacter(file) {
+    if (!file || file.type !== "13-omens-character" || file.version !== 1 || Object.keys(file).some(k=>!["type","version","exportedAt","character"].includes(k))) throw new Error("Invalid character file type or version.");
+    const c = JSON.parse(JSON.stringify(file.character || {}));
+    if (Object.keys(c).some(k=>!characterKeys.includes(k))) throw new Error("Character file contains protected or unknown fields.");
+    for (const [key, allowed] of [["aspects",["id","type","name","rating","strained"]],["perks",["id","name","notes","ruleKey","disabled"]],["gear",["id","name","notes"]]]) {
+      if (!Array.isArray(c[key]) || c[key].some(e=>!e || Object.keys(e).some(k=>!allowed.includes(k)))) throw new Error("Invalid character entries.");
+    }
+    if (typeof c.name!=="string" || c.name.length>120 || typeof c.statusMessage!=="string" || c.statusMessage.length>4000) throw new Error("Invalid character text.");
+    if (!c.perkUsage || typeof c.perkUsage !== 'object' || Object.entries(c.perkUsage).some(([key,u])=> !Object.hasOwn(Rules.Perks.PERK_RULES,key) || !u || Object.keys(u).some(k=>!['storyUsed','actsUsed','scenesUsed'].includes(k)))) throw new Error("Invalid Perk usage fields.");
+    c.id = newCharacter().id;
+    const probe = defaultState(); probe.characters=[c]; probe.selectedCharacterId=c.id; probe.hostOmens=13-c.wounds;
+    const errors=validateState(probe); if(errors.length) throw new Error(errors.join(" "));
+    return commit(draft=>{
+      blockIfPending(draft);
+      if(draft.characters.length>=6) throw new Error("Cannot import character: room already has the maximum number of characters.");
+      if(draft.hostOmens<c.wounds) throw new Error("Cannot import character: not enough Host Omens to preserve imported Wounds.");
+      draft.hostOmens-=c.wounds; draft.characters.push(c); draft.selectedCharacterId=c.id;
+      if(!c.active) draft.perishedCharacterIds.push(c.id);
+    }, "Imported character: "+c.name);
+  }
+
   function editCharacter(id, patch) {
     return commit(draft => {
       const c = draft.characters.find(c => c.id === id);
@@ -451,13 +483,15 @@
       if (Object.keys(patch).some(k => !allowed.includes(k))) throw new Error("Unknown character field.");
       // Full committed sheet edits, never arbitrary mechanics or identity replacement.
       if (patch.aspects) {
-        if (!Array.isArray(patch.aspects)) throw new Error("Invalid Aspects.");
+        if (!Array.isArray(patch.aspects) || patch.aspects.some(a=>!a || Object.keys(a).some(k=>!["id","type","name","rating","strained"].includes(k)))) throw new Error("Invalid Aspects.");
         if (hasUnresolvedCheck(draft) && patch.aspects.some((a, i) => a.strained !== c.aspects[i]?.strained)) throw new Error("Resolve the pending Check before changing Strain.");
       }
+      if (patch.gear && (!Array.isArray(patch.gear) || patch.gear.some(e=>!e || Object.keys(e).some(k=>!["id","name","notes"].includes(k))))) throw new Error("Invalid Gear edit.");
       if (patch.perks) {
-        blockIfPending(draft);
         if (!Array.isArray(patch.perks) || patch.perks.some(p=>Object.keys(p).some(k=>!['id','name','notes','ruleKey','disabled'].includes(k)))) throw new Error("Invalid Perk edit.");
         patch = {...patch, perks:patch.perks.map(p=>({...p,ruleKey:p.ruleKey||null,disabled:Boolean(p.disabled)}))};
+        const perkFields = entries => entries.map(p=>({id:p.id,name:p.name,notes:p.notes,ruleKey:p.ruleKey||null,disabled:Boolean(p.disabled)}));
+        if (hasUnresolvedCheck(draft) && JSON.stringify(perkFields(patch.perks)) !== JSON.stringify(perkFields(c.perks))) throw new Error("Resolve the pending Check before changing Perks.");
       }
       Object.assign(c, JSON.parse(JSON.stringify(patch)));
       if (typeof c.name === "string") c.name = c.name.trim();
@@ -501,7 +535,7 @@
   }
 
   const api = {
-    activatePerk, setPerkDisabled, advanceScene, editCharacter, setStrain, useStrainRelief, setStoryCharacterCount,
+    exportCharacter, importCharacter, activatePerk, setPerkDisabled, advanceScene, editCharacter, setStrain, useStrainRelief, setStoryCharacterCount,
     setSetting,
     addCharacter,
     selectCharacter,
@@ -552,7 +586,7 @@
     },
   };
   // Keep synchronous solo APIs; multiplayer dispatch never writes the solo save.
-  const mutations = ["activatePerk", "setPerkDisabled", "advanceScene", "editCharacter", "setStrain", "useStrainRelief", "setStoryCharacterCount", "setSetting", "addCharacter", "selectCharacter", "renameCharacter", "removeCharacter", "resetGame", "importState", "clearLog", "setAct", "addOmenToBag", "removeOmenFromBag", "applyManual", "drawCheck", "rollCheck", "rerollCheck", "chooseRoll", "finishCheck", "cancelCheck", "takeWound", "cheatDeath", "valiantSacrifice", "reviveCharacter", "recordStrain"];
+  const mutations = ["importCharacter","activatePerk", "setPerkDisabled", "advanceScene", "editCharacter", "setStrain", "useStrainRelief", "setStoryCharacterCount", "setSetting", "addCharacter", "selectCharacter", "renameCharacter", "removeCharacter", "resetGame", "importState", "clearLog", "setAct", "addOmenToBag", "removeOmenFromBag", "applyManual", "drawCheck", "rollCheck", "rerollCheck", "chooseRoll", "finishCheck", "cancelCheck", "takeWound", "cheatDeath", "valiantSacrifice", "reviveCharacter", "recordStrain"];
   for (const action of mutations) {
     const local = api[action];
     api[action] = (...args) => mode === "multiplayer" ? transport(action, args, getState()) : local(...args);

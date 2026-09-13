@@ -449,6 +449,10 @@
     return rollPendingCheck(drawn, state.act, rng);
   }
 
+  function getTargetNumberForRating(rating) {
+    if (!Object.hasOwn(ASPECTS, rating)) throw new Error("Invalid Aspect Rating.");
+    return ASPECTS[rating];
+  }
   return {
     Perks, refreshCheckModifiers, removeStrain, CORE_NAMES, defaultAspects, getAspect, findAspect, setAspectStrain, getDeathThreshold, getAutomaticWoundFlaw, getWoundThreshold, markPerished,
     getCharacter,
@@ -461,7 +465,7 @@
     PHASE_AWAITING_WOUND,
     PHASE_RESOLVED,
     ACTS,
-    ASPECTS,
+    ASPECTS, getTargetNumberForRating,
     DIFFICULTIES,
     clampInteger,
     randomInt,

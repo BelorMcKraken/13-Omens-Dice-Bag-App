@@ -41,7 +41,7 @@ For a LAN game, connect devices to the same network, find the server computer's 
 
 ## Multiplayer Pass 3 (complete)
 
-Host and Players share character sheets with five fixed Core Aspects and five stable Story slots. Host edits names, Ratings, Archetype, Description, Notes, Gear and Perks; Players read the same data. Story renames preserve IDs and Strain. Normal Checks send characterId and aspectId; the server snapshots name, Rating, base TN, difficulty and final TN. Players no longer confirm Ratings. Manual TN remains a Host option.
+Host and Players share character sheets with five fixed Core Aspects and five stable Story slots. Host and authorized assigned Players edit names, Ratings, Archetype, Description, Notes, Gear and Perks using SAVE CHARACTER. The Host can turn Player editing off. Story renames preserve IDs and Strain. Normal Checks send characterId and aspectId; the server snapshots name, Rating, base TN, difficulty and final TN. Players no longer confirm Ratings. Manual TN remains a Host option.
 
 Strain buttons act directly on Aspect IDs. Auto-apply Strain Flaw is optional. Fixed story size determines death at 6/5/4/4/3/2 Wounds for 1–6 characters. Six-character stories change to threshold 3 after two distinct characters perish. Three-character stories grant each character one Strain removal per story. Set story size before play; adding/removing roster entries does not silently change it.
 
@@ -53,7 +53,7 @@ Multiplayer clients send intents, never authoritative dice or outcomes. Producti
 
 The server validates authenticated room identity, role, current assignment, Check ownership, active character, phase, allowed payload fields, version, eligibility and the 13-Omen invariant. Only the Host calls Checks or changes management settings. Players can control only their assigned pending Check. The pending owner/character assignment is locked. Manual corrections, imports and reset are blocked while a Check is unresolved; multiplayer imports cannot inject Check records/results. The Host remains a trusted game administrator with validated correction tools outside a pending Check.
 
-The current schema is version `4`; multiplayer adds the `AWAITING_PLAYER` phase and Check ownership/configuration metadata to `currentCheck`. The Check snapshots the Act **when the Host calls it**. Solo continues to snapshot on drawing. Changing the story Act with locking disabled never changes the pending Check's Act.
+The current schema is version `5`; multiplayer adds the `AWAITING_PLAYER` phase and Check ownership/configuration metadata to `currentCheck`. The Check snapshots the Act **when the Host calls it**. Solo continues to snapshot on drawing. Changing the story Act with locking disabled never changes the pending Check's Act.
 
 ### Reconnect and duplicate actions
 
@@ -72,7 +72,7 @@ Successful acknowledgements use `{ ok: true, room?, session? }`; errors use `{ o
 | `room:create`, `room:join`, `room:reconnect` | Create/join a session or authenticate a saved reconnect identity |
 | `room:sync`, `room:leave` | Current session sync/leave |
 | `player:assign-character` | Host assignment management |
-| `game:action` | Host-only allowlisted game management with validated action arguments and version |
+| `game:action` | Host management, plus own-character Player saves when enabled; validated fields and state version |
 | `check:create` | Host; `{ configuration, baseVersion }` |
 | `check:set-rating` | Retired compatibility endpoint; normal Ratings are locked |
 | `check:draw`, `check:roll`, `check:reroll` | Check controller; `{ checkId, baseVersion }` |
@@ -96,7 +96,7 @@ A sensible next phase is durable room recovery across server restarts, followed 
 
 In Solo mode, the app stores game state in `localStorage`, including the current Act, bag composition, Host Omens, character Wounds, character status, Cheat Death use, Strain, current pending Check, and the history log. Refreshing the browser should not erase the game, even if dice have been drawn but not rolled or a Wound is awaiting resolution.
 
-The current state schema is version `4`. The existing localStorage key is retained. Valid older single-character saves and JSON imports migrate to `characters: [...]` and `selectedCharacterId`; the original character keeps their Wounds, Strain, status, and Cheat Death use and receives a persistent unique ID. Older phased Checks receive the migrated character ID and saved story Act when those snapshots are missing. Version 1 one-step Check data without phase information is discarded while persistent game state is retained. Migration is saved immediately on successful load so IDs survive refresh.
+The current state schema is version `5`. The existing localStorage key is retained. Valid older single-character saves and JSON imports migrate to `characters: [...]` and `selectedCharacterId`; the original character keeps their Wounds, Strain, status, and Cheat Death use and receives a persistent unique ID. Older phased Checks receive the migrated character ID and saved story Act when those snapshots are missing. Version 1 one-step Check data without phase information is discarded while persistent game state is retained. Migration is saved immediately on successful load so IDs survive refresh.
 
 Malformed imports are rejected before replacing the game, including invalid counts, IDs, selection, Wounds, status, Strain, pending Checks, and Omen totals. Invalid stored saves fall back to a fresh game and emit a console warning; the original stored value is not overwritten during that failed load.
 
@@ -212,11 +212,11 @@ Rerolling preserves the exact die types and sources from the current Check. It g
 
 ## Export And Import
 
-Use **Export Game State** to place formatted JSON in the text area. Use **Import Game State** to restore a saved JSON state. Imported state is normalized and validated before replacing the current game. Solo supports pending Check restoration. Multiplayer import is Host-only, requires no unresolved Check, and rejects any imported `currentCheck`; it cannot submit client-generated Check outcomes.
+Use **Export Session JSON** on **HISTORY & SAVE** to place formatted JSON in the text area. Use **Import Session JSON** to restore a saved JSON state. Imported state is normalized and validated before replacing the current game. Solo supports pending Check restoration. Multiplayer import is Host-only, requires no unresolved Check, and rejects any imported `currentCheck`; it cannot submit client-generated Check outcomes.
 
 ## Verification
 
-Run the complete suite with `npm test`. **193 tests pass**:
+Historical Pass-2 verification had **193 passing tests**. Current verification is listed below:
 
 | Suite | Passing tests |
 | --- | ---: |
@@ -250,4 +250,71 @@ Changed existing files are `index.html`, `css/styles.css`, `js/rules.js`, `js/st
 
 ### Pass 3 verification (2026-09-13)
 
-All 200 tests pass, including seven dedicated sheet/migration/group-size/TN/favicon tests. Updated obsolete Check and state tests; fixed legacy named-Strain lookup when using Aspect IDs. Browser verification covered Host edits, matching read-only Player sheets, Good Courage + Hard = TN 6, Player draw/roll and reconnect with unchanged drawn dice. Broader Pass 4 verification follows below.
+All 200 tests pass, including seven dedicated sheet/migration/group-size/TN/favicon tests. Updated obsolete Check and state tests; fixed legacy named-Strain lookup when using Aspect IDs. Browser verification covered Host edits, matching read-only Player sheets, Good Courage + Hard = TN 6, Player draw/roll and reconnect with unchanged drawn dice. This describes the historical Pass-3 behavior; current Player editing is described below.
+
+
+## Character editing and UI production fixes (2026-09-13)
+
+The existing vanilla JavaScript/Express/Socket.IO app remains in place. Run `npm ci`, `npm test`, and `npm start`; Render still uses `process.env.PORT`, binds `0.0.0.0`, and needs no new dependencies or services. The inline **💀 skull favicon** is unchanged.
+
+### Save a character
+
+Open **CHARACTERS** (Host/Solo) or **MY CHARACTER** (Player). Edit the identity fields, ten Aspect slots, Perks, Gear, and Notes, then press the prominent **SAVE CHARACTER** button. This commits one complete validated sheet transaction. A successful acknowledgement displays **Character saved.** Failures remain inline and preserve the draft. The duplicate standalone Rename control is hidden.
+
+**Add Perk** and **Add Gear** insert editable draft entries immediately, each with a generated stable ID. Edit or remove entries in the list, then Save Character to persist them. Automation is explicitly selected: Bossy stores `ruleKey: "bossy"`; **Custom / Manual** stores `null`. Typed names never select automation. Existing usage and disabled status are retained.
+
+Unsaved fields display **Unsaved changes** and survive tab switches, character selection, and unrelated room broadcasts for the lifetime of the page. Save before refreshing or closing the page. Drafts are not a second authoritative character state. Accepted full-sheet saves apply the submitted editable fields; there is no collaborative text merge.
+
+The Rating is authoritative; normal TN is never an editable character field. `Rules.getTargetNumberForRating` is used by the sheet, Check caller, server Check creation, and applicable Perk calculations:
+
+| Rating | Derived TN |
+| --- | ---: |
+| Terrible | 10 |
+| Bad | 9 |
+| Average | 7 |
+| Good | 5 |
+| Great | 4 |
+
+A dropdown change previews TN immediately; Save broadcasts the committed Rating to every connected view. A pending Check keeps its existing Rating/TN snapshot. A subsequent Check uses the saved Rating. The existing explicit **Host manual TN Check** override remains available.
+
+The stale display came from an uncommitted form: TN text only updated on rendering, drafts could be discarded by room rerenders, and full-sheet saves always included Perks, which previously blocked even unchanged Perks during a pending Check. Draft retention, immediate derived-TN rendering, save acknowledgement, and semantic comparison of unchanged Perks fix these paths.
+
+### Player permissions
+
+**ALLOW PLAYERS TO EDIT THEIR OWN CHARACTER SHEET** defaults **ON**, including when loading older schema-5 saves that lack the setting. The Host controls it from CHARACTERS. When enabled, an authenticated Player may save only their assigned character's Name, Archetype, Description, Ratings, Story Aspect names, Perks, Gear, and Notes. When disabled, the shared Player sheet is read-only; character export remains available.
+
+The server checks identity, assignment, setting, revision, field allowlists, valid Ratings, five fixed Core IDs/names, five stable Story IDs, and valid unique Perk/Gear IDs. Wounds, Strain, Cheat Death state, active/dead state, Safe Dice, Omen bookkeeping, usage, disabled-Perk state, group rules, and assignment remain Host/mechanics controlled. Player attempts to submit protected fields or edit someone else's character are rejected atomically. Story renames retain their IDs and Strain.
+
+### Main views
+
+- **GAME:** room connection, Story/Act state, Scene and Perk actions, Bag/Host Omens, Check caller, and pending Check/results/actions.
+- **CHARACTERS:** roster, assignments, fixed story count, player-edit setting, full shared sheet, Host correction tools, add/remove, Save Character, and Character File controls.
+- **HISTORY & SAVE:** session history and room log, Export/Import Session JSON, and New Game/reset utilities.
+
+Players have **GAME / CURRENT CHECK**, **MY CHARACTER**, and **HISTORY**. The history view contains the existing room/session history. Accessible native buttons indicate selection with `aria-pressed`; CSS changes panel visibility without navigation, cloning sheets, or changing game/Check state. Mobile tabs wrap their labels and sheet rows fit narrow widths.
+
+### Character files versus session files
+
+**EXPORT CHARACTER** creates `13-omens-character-<safe-name>.json` from the saved character and exposes a read-only JSON preview/download link. The envelope is `{ "type": "13-omens-character", "version": 1, "exportedAt": "...", "character": { ... } }`.
+
+Exports contain identity text, ten Aspects/Ratings/Strain, Wounds, Cheat Death, active state, strain-relief and Safe-die-loss continuity, Perks/ruleKeys/disabled status/usage, Gear, and Notes. Explicit allowlists exclude room codes, assignments, player/socket/Host IDs, reconnect tokens, pending Checks, Bag state, and other characters. Players may export only the assigned character shown in their UI.
+
+Host/Solo **IMPORT CHARACTER** accepts this versioned JSON and creates a new unassigned character with a new character ID. Aspect and entry IDs remain stable within the new character. It preserves character continuity; it does not silently heal Wounds or clear Strain/usage. Duplicate display names are allowed. Exactly six characters is the maximum, and fixed `storyCharacterCount` does not change. Malformed type/version, structure, Ratings, IDs, strings, arrays, or protected fields reject before any room mutation. Files above 512 KB reject in the picker, and the server retains its existing message limit.
+
+Because Wounds are Omens, import transfers the imported Wound count from the Host pool, preserving the room's 13-Omen invariant. Insufficient Host Omens reject with a clear message. Import requires no unresolved Check. Fresh-copy/reset-on-import is not included.
+
+**Export/Import Session JSON** instead saves/restores the complete game state, including all characters, Bag, settings, scene and history. Game schema remains **5**, and standalone character-file schema is **1**. Existing migrations are retained. Multiplayer session import still rejects Check snapshots and requires a resolved/cancelled Check.
+
+### Pass 4 and current limitations
+
+Pass 4 remains implemented: The Truth, Carry On, Awkward Pause, Bossy, Gripe and Complain, Local Edge, Lucky, Five Minute Break, Late for Work, Chill Out, Very Tired, Eager to Help, Tech Pro, Code Wizard, Encyclopedic Memory, and the supported conditional Scene Edge rule. Explicit automation keys, scene/Act/story usage, reconnect persistence, server validation, refunds, and conditional activation remain unchanged. Custom/manual Perks remain supported. Perk additions/removals/changes still require resolving or cancelling a pending Check; saving unchanged Perks with changed Ratings is allowed, protecting current automation snapshots.
+
+Rooms remain in server memory and disappear on server restart. Unsaved drafts do not survive browser reload. Normal character import preserves continuity and has no optional fresh-copy mode. No production deploy or physical LAN/mobile-device test was performed in this pass.
+
+### Current verification
+
+`npm test`: **278 passing tests**, no failures (44 rules, 28 state, 8 existing DOM interactions, 48 rooms, 11 network clients, 54 authoritative Checks, 7 Pass-3, 54 Pass-4 Perks, 24 new character tests). Existing tests were retained; old default-setting and Player read-only expectations were updated to the requested behavior.
+
+The new suite covers every Rating through save and server Check creation, shared sheet TN markup, assigned Player saves, wrong-character/setting/protected-field rejection, stable entries, session/reconnect persistence, unchanged pending snapshots, character export secret exclusion, full-state import/round-trip, malformed files, duplicate names, capacity, Omen conservation, defaults, and real Socket.IO broadcasts/reconnect/stale revisions.
+
+Interactive browser verification used separate loopback origins for Host and Bob. Jasper Courage Average → Good saved as TN 5 on both views; the Host called Courage Hard (+1), the shared Check used Base 5 / Final 6, and Bob drew, rolled, and finished. Bob saved Fight Bad, Occultism Great, Bossy automation, and Flashlight; Host received all changes and Player refresh retained the exact entry IDs. Host OFF/ON switched Player editing live. The exported JSON was inspected and its matching payload imported through the file picker into a fresh room, preserving data with a new unassigned character ID. Tab switches and an unrelated Omen update preserved a draft. Host and Player narrow layouts were checked at 390 pixels; no horizontal page overflow was observed. The embedded browser did not report a download event, so the JSON preview and file-picker round-trip were verified; browser-managed disk download completion was not independently observed.

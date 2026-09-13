@@ -78,6 +78,7 @@
         <button id="mpCancel" type="button" hidden>Cancel Check</button>
       </div>
     </section>
+    <nav id="primaryTabs" aria-label="Main views" hidden></nav>
     <fieldset id="gameControls" class="game-controls">
     <main id="gameInterface" class="app-shell" hidden>
       <section class="panel story-panel" aria-labelledby="story-heading">
@@ -121,9 +122,9 @@
         <div id="characterList" class="character-list"></div>
         <button id="addCharacter" type="button">+ Add Character</button>
         <p id="characterLimit" class="muted"></p>
-        <label>Selected character name <input id="characterName" type="text" maxlength="120" /></label>
-        <div class="button-pair"><button id="renameCharacter" type="button">Rename</button><button id="removeCharacter" type="button">Remove Character</button></div>
-        <p id="characterLock" class="muted"></p><div id="hostSheet"></div>
+        <label hidden>Selected character name <input id="characterName" type="text" maxlength="120" /></label>
+        <div class="button-pair"><button hidden id="renameCharacter" type="button">Rename</button><button id="removeCharacter" type="button">Remove Character</button></div>
+        <p id="characterLock" class="muted"></p><label><input type="checkbox" id="allowPlayerCharacterEdits" checked> ALLOW PLAYERS TO EDIT THEIR OWN CHARACTER SHEET</label><div id="hostSheet"></div>
         <p>Strain: <span id="strainSummary">None</span></p>
         <div class="wounds-line">
           <span>Wounds</span>
@@ -243,11 +244,11 @@
 
       <section class="panel persistence-panel" aria-labelledby="persistence-heading">
         <div class="panel-heading">
-          <h2 id="persistence-heading">Save / Import</h2>
-          <button id="exportState" type="button">Export Game State</button>
+          <h2 id="persistence-heading">Session Save / Import</h2>
+          <button id="exportState" type="button">Export Session JSON</button>
         </div>
         <textarea id="importText" rows="8" spellcheck="false" aria-label="Import or exported JSON game state"></textarea>
-        <button id="importState" type="button">Import Game State</button>
+        <button id="importState" type="button">Import Session JSON</button>
       </section>
 
       <section class="panel history-panel" aria-labelledby="history-heading">
@@ -268,5 +269,6 @@
   <script src="js/app.js"></script>
     <script src="js/socket.js"></script>
     <script src="js/multiplayer.js"></script>
-  </body>
+  <script src="js/tabs.js"></script>
+</body>
 </html>

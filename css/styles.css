@@ -584,3 +584,26 @@ h2 {
 #mpPerks, #soloPerks { overflow-wrap: anywhere; min-width: 0; }
 #mpPerks ul { padding-left: 20px; }
 @media (max-width: 600px) { .aspect-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .sheet-entry, .sheet-identity { display: grid; grid-template-columns: minmax(0,1fr); } .character-sheet input, .character-sheet textarea, .character-sheet select { min-width: 0; max-width: 100%; } }
+
+#primaryTabs { display:flex; gap:.5rem; flex-wrap:wrap; margin:1rem auto; max-width:1200px; }
+#primaryTabs[hidden] { display:none; }
+#primaryTabs button { flex:1; min-width:0; }
+#primaryTabs [aria-pressed="true"] { background:#643331; border-color:#e3b77b; }
+body[data-main-tab="game"] [data-tab-panel]:not([data-tab-panel="game"]),
+body[data-main-tab="characters"] [data-tab-panel]:not([data-tab-panel="characters"]),
+body[data-main-tab="history"] [data-tab-panel]:not([data-tab-panel="history"]) { display:none !important; }
+.character-file { border-top:1px solid #756454; margin-top:1rem; padding-top:1rem; }
+[data-save] { position:sticky; bottom:1rem; font-weight:bold; background:#63332e; width:100%; padding:1rem; }
+.aspect-row > *, .sheet-entry > *, .panel, input, select, textarea { min-width:0; max-width:100%; }
+@media(max-width:600px) { .aspect-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .app-shell { display:block; } .panel { margin-bottom:1rem; } }
+
+body[data-main-tab="characters"] .character-panel { grid-column:span 8; }
+body[data-main-tab="characters"] .host-tools { grid-column:span 4; align-self:start; }
+body[data-main-tab="history"] .persistence-panel, body[data-main-tab="history"] .history-panel { grid-column:span 6; }
+@media(min-width:981px) { .character-panel .aspect-row { grid-template-columns:minmax(130px,1.5fr) minmax(100px,1fr) 48px 80px minmax(100px,1fr); } }
+@media(max-width:980px) { body[data-main-tab] .character-panel, body[data-main-tab] .host-tools, body[data-main-tab] .persistence-panel, body[data-main-tab] .history-panel { grid-column:span 12; } }
+
+#primaryTabs { width:min(72rem,calc(100% - 2rem)); }
+@media(max-width:600px) { #primaryTabs button { padding:.7rem .25rem; font-size:.78rem; overflow-wrap:anywhere; } }
+
+#allowPlayerCharacterEdits { width:auto; min-height:auto; display:inline-block; margin-right:.5rem; }

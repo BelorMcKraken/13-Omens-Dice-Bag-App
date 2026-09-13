@@ -87,7 +87,7 @@
     }
     const game = room.gameState;
     const assigned = game.characters.find((character) => character.id === player?.assignedCharacterId);
-    window.ThirteenOmensSheet.render($("playerSheet"), game, assigned, false, player?.displayName);
+    window.ThirteenOmensSheet.render($("playerSheet"), game, assigned, !!game.settings.allowPlayerCharacterEdits && view.status === "connected", player?.displayName, false);
     $("playerGameSummary").textContent = `${game.act} · Bag: ${game.bag.safe} Safe / ${game.bag.omen} Omen · Host Omens: ${game.hostOmens}`;
     $("playerCharacterName").textContent = assigned?.name || "Unassigned — waiting for the Host";
     $("playerCharacterStatus").textContent = assigned ? `Wounds: ${assigned.wounds} · ${assigned.active ? "Active" : "Inactive"} · Cheat Death: ${window.ThirteenOmensRules.Perks.hasPerk(assigned,"the-truth") ? "Forbidden — The Truth" : assigned.cheatDeathUsed ? "Used" : "Available"}` : "You can observe the room while unassigned.";

@@ -147,7 +147,7 @@
   }
 
   function getCheckOptions() {
-    const baseTn = els.manualTn.checked ? els.baseTn.value : Rules.ASPECTS[els.aspect.value];
+    const baseTn = els.manualTn.checked ? els.baseTn.value : Rules.getTargetNumberForRating(els.aspect.value);
     return {
       aspect: els.aspectName.value.trim() || els.aspect.value,
       rating: els.aspect.value,

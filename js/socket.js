@@ -100,7 +100,7 @@
 
     async function mutate(event, payload) {
       if (status !== "connected" || !active) throw new Error("Server connection lost. Wait for reconnection before changing the game.");
-      if ((!event.startsWith("perk:") && !event.startsWith("check:") || ["check:create", "check:cancel", "check:takeover"].includes(event)) && me()?.role !== "HOST") throw new Error("Host permission required.");
+      if (!(event === "game:action" && payload.action === "editCharacter") && (!event.startsWith("perk:") && !event.startsWith("check:") || ["check:create", "check:cancel", "check:takeover"].includes(event)) && me()?.role !== "HOST") throw new Error("Host permission required.");
       if (busy) throw new Error("Wait for the current action to finish.");
       busy = true; error = ""; notify();
       try {
@@ -127,7 +127,7 @@
         if (action !== "chooseRoll" && args.length) return Promise.reject(new Error("Multiplayer Check actions accept no client dice or randomness."));
         return checkAction(CHECK_EVENTS[action], action === "chooseRoll" ? { rollName: args[0] } : {});
       }
-      if (status !== "connected" || me()?.role !== "HOST" || busy) return Promise.reject(new Error("Connected Host permission required; wait for any pending action."));
+      if (status !== "connected" || (me()?.role !== "HOST" && action !== "editCharacter") || busy) return Promise.reject(new Error("Connected Host permission required; wait for any pending action."));
       return mutate("game:action", { action, args, baseVersion: room.gameVersion });
     }
 

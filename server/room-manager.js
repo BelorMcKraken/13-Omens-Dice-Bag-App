@@ -10,6 +10,7 @@ const hash = (token) => createHash("sha256").update(token).digest();
 
 // Explicit management operations; Check intents are handled separately.
 const MANAGEMENT = {
+  importCharacter: args => args.length === 1 && args[0] && typeof args[0] === "object",
   editCharacter: args => args.length === 2 && Boolean(text(args[0], "Character ID")) && Boolean(args[1]) && typeof args[1] === "object",
   setStrain: args => args.length === 3 && Boolean(text(args[0], "Character ID")) && Boolean(text(args[1], "Aspect ID")) && typeof args[2] === "boolean",
   useStrainRelief: args => args.length === 2 && Boolean(text(args[0], "Character ID")) && Boolean(text(args[1], "Aspect ID")),
@@ -21,7 +22,7 @@ const MANAGEMENT = {
   removeCharacter: (args) => args.length === 1 && Boolean(text(args[0], "Character ID")),
   selectCharacter: (args) => args.length === 1 && Boolean(text(args[0], "Character ID")),
   renameCharacter: (args) => args.length === 2 && Boolean(text(args[0], "Character ID")) && Boolean(text(args[1], "Character name")),
-  setSetting: (args) => args.length === 2 && ["autoApplyStrainFlaw", "lockActDuringPendingCheck"].includes(args[0]) && typeof args[1] === "boolean",
+  setSetting: (args) => args.length === 2 && ["autoApplyStrainFlaw", "lockActDuringPendingCheck", "allowPlayerCharacterEdits"].includes(args[0]) && typeof args[1] === "boolean",
   recordStrain: (args) => args.length === 1 && Boolean(text(args[0], "Aspect")),
   reviveCharacter: (args) => args.length === 0,
   clearLog: (args) => args.length === 0,
@@ -184,7 +185,14 @@ class RoomManager {
   }
 
   action(socketId, payload) {
-    const { room } = this.authorize(socketId);
+    const { room, player } = this.authorize(socketId, false);
+    if (player.role !== "HOST") {
+      if (payload?.action !== "editCharacter" || !room.gameState.settings.allowPlayerCharacterEdits || payload.args?.[0] !== player.assignedCharacterId || !player.assignedCharacterId) fail("HOST_REQUIRED", "You may only edit your assigned character when the Host allows editing.");
+      const patch=payload.args[1], c=room.gameState.characters.find(c=>c.id===player.assignedCharacterId);
+      if(!patch || typeof patch!=="object") fail("INVALID_PAYLOAD","Invalid character edit.");
+      if(patch.aspects && (!Array.isArray(patch.aspects) || patch.aspects.some((a,i)=>!a || Object.keys(a).some(k=>!["id","type","name","rating","strained"].includes(k)) || a.strained!==c.aspects[i]?.strained))) fail("HOST_REQUIRED","Strain is Host controlled.");
+      if(patch.perks && (!Array.isArray(patch.perks) || patch.perks.some(p=>!p || !!p.disabled!==!!c.perks.find(old=>old.id===p.id)?.disabled))) fail("HOST_REQUIRED","Disabled Perk state is Host controlled.");
+    }
     object(payload, ["action", "args", "baseVersion"]);
     this.checkVersion(room, payload.baseVersion);
     if (typeof payload.action !== "string" || !Object.hasOwn(MANAGEMENT, payload.action) || !Array.isArray(payload.args) || !MANAGEMENT[payload.action](payload.args)) fail("INVALID_PAYLOAD", "Unknown or malformed management action.");

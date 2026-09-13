@@ -28,7 +28,7 @@ class CheckManager {
       if (input.baseTn !== undefined || input.aspect !== undefined) fail("INVALID_PAYLOAD", "Normal Checks derive Rating and TN from the character sheet.");
       const stored = Rules.getAspect(character, input.aspectId);
       if (!stored) fail("INVALID_PAYLOAD", "Choose an Aspect on this character.");
-      ({ id: aspectId, name: aspect, rating } = stored); baseTn = Rules.ASPECTS[rating];
+      ({ id: aspectId, name: aspect, rating } = stored); baseTn = Rules.getTargetNumberForRating(rating);
     }
     return { characterId, configuration: { aspectId, aspect, rating, manualTn: input.manualTn, baseTn,
       allowPlayerRating: false, difficultyModifier: input.difficultyModifier, edges, flaws,
@@ -99,9 +99,9 @@ class CheckManager {
       if (typeof payload.rating !== "string" || !Object.hasOwn(Rules.ASPECTS, payload.rating)) fail("INVALID_PAYLOAD", "Choose a known Rating.");
       next = clone(room.gameState);
       next.currentCheck.configuration.rating = payload.rating;
-      next.currentCheck.configuration.baseTn = Rules.ASPECTS[payload.rating];
-      next.currentCheck.finalTn = Rules.determineFinalTN(Rules.ASPECTS[payload.rating], check.configuration.difficultyModifier);
-      this.log(next, `${character.name} confirmed ${payload.rating} Rating (base TN ${Rules.ASPECTS[payload.rating]}).`);
+      next.currentCheck.configuration.baseTn = Rules.getTargetNumberForRating(payload.rating);
+      next.currentCheck.finalTn = Rules.determineFinalTN(Rules.getTargetNumberForRating(payload.rating), check.configuration.difficultyModifier);
+      this.log(next, `${character.name} confirmed ${payload.rating} Rating (base TN ${Rules.getTargetNumberForRating(payload.rating)}).`);
     } else if (event === "check:draw") {
       requirePhase(Rules.PHASE_REQUESTED);
       // Reuse the existing transaction creation, on the requested owner and snapshotted Act.
