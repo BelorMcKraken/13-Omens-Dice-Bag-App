@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>13 Omens - Virtual Dice Bag</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">Persistent Virtual Dice Bag</p>
+        <h1>13 OMENS</h1>
+        <p class="subtitle">Virtual Dice Bag</p>
+      </div>
+      <div class="act-sigil" aria-live="polite">
+        <span>Current</span>
+        <strong id="actDisplay">PROLOGUE</strong>
+      </div>
+    </header>
+
+    <section id="mainMenu" class="panel multiplayer-panel" aria-labelledby="menu-heading">
+      <p class="eyebrow">Gather around the bag</p>
+      <h2 id="menu-heading">Choose your game</h2>
+      <p>Play solo, or gather a Host and up to six Players on your local network.</p>
+      <div class="menu-actions">
+        <button id="soloGame" class="primary-button" type="button">Solo Game</button>
+        <label>Host display name <input id="hostDisplayName" maxlength="60" value="Host" /></label>
+        <button id="createMultiplayer" type="button">Create Multiplayer Game</button>
+        <button id="joinMultiplayer" type="button">Join Multiplayer Game</button>
+        <button id="resumeMultiplayer" type="button" hidden>Resume Multiplayer Game</button>
+      </div>
+      <form id="joinForm" class="form-grid" hidden>
+        <label>Room code <input id="joinRoomCode" required maxlength="32" autocomplete="off" placeholder="OMEN-4263" /></label>
+        <label>Display name <input id="joinDisplayName" required maxlength="60" autocomplete="nickname" /></label>
+        <button type="submit">Join Game</button>
+      </form>
+      <p class="muted">Solo saves stay on this browser. Multiplayer rooms last while the local server runs.</p>
+    </section>
+    <div id="soloMenu" class="multiplayer-panel" hidden><button id="backFromSolo" type="button">Main Menu</button><span> Solo Game · saved on this browser</span></div>
+    <p id="multiplayerError" class="multiplayer-panel notice danger" role="alert" aria-live="polite"></p>
+    <section id="multiplayerLobby" class="panel multiplayer-panel" aria-labelledby="multiplayer-heading" hidden>
+      <div class="panel-heading"><h2 id="multiplayer-heading">Multiplayer</h2><span id="connectionStatus" role="status" aria-live="polite"></span></div>
+      <div class="room-heading"><span>ROOM CODE</span><strong id="roomCodeDisplay"></strong><button id="copyRoomCode" type="button">Copy Room Code</button></div>
+      <input id="copyCodeFallback" aria-label="Copy room code" readonly hidden />
+      <p id="myIdentity"></p><p id="hostConnection" role="status"></p>
+      <h3>Players &amp; character assignments</h3><div id="playersList"></div>
+      <p class="muted">Pass 1: the Host runs Checks in their browser. Players observe synchronized results. Dice are not yet server-authoritative.</p>
+      <button id="leaveMultiplayer" type="button">Return to Main Menu</button>
+      <p class="muted">Your reconnect identity is kept for Resume. Use a separate browser profile for each person.</p>
+      <details><summary>Room session log</summary><ol id="roomActivity" class="history-list"></ol></details>
+    </section>
+    <section id="playerView" class="panel multiplayer-panel" aria-labelledby="player-heading" hidden>
+      <h2 id="player-heading">Your place at the table</h2>
+      <p id="playerGameSummary" aria-live="polite"></p>
+      <h3 id="playerCharacterName"></h3><p id="playerCharacterStatus"></p><p id="playerStrain"></p>
+      <p id="playerCheck" class="notice calm" aria-live="polite"></p>
+    </section>
+    <fieldset id="gameControls" class="game-controls">
+    <main id="gameInterface" class="app-shell" hidden>
+      <section class="panel story-panel" aria-labelledby="story-heading">
+        <div class="panel-heading">
+          <h2 id="story-heading">Story State</h2>
+          <button id="newGame" class="ghost-button" type="button">New Game</button>
+        </div>
+        <label>
+          Current Act
+          <select id="actSelect"></select>
+        </label>
+        <div class="stat-grid">
+          <div><span>Host Omens</span><strong id="hostCount">13</strong></div>
+          <div><span>Safe In Bag</span><strong id="safeCount">8</strong></div>
+          <div><span>Omen In Bag</span><strong id="omenCount">0</strong></div>
+          <div><span>Total Bag Dice</span><strong id="totalBag">8</strong></div>
+        </div>
+        <p id="integrity" class="integrity" aria-live="polite"></p>
+      </section>
+
+      <section class="panel bag-panel" aria-labelledby="bag-heading">
+        <div class="panel-heading">
+          <h2 id="bag-heading">The Bag</h2>
+          <div class="button-pair">
+            <button id="addOmen" type="button">Add Omen</button>
+            <button id="removeOmen" type="button">Remove Omen</button>
+          </div>
+        </div>
+        <div class="bag-visual" aria-label="Safe dice currently in the bag">
+          <span>SAFE</span>
+          <div id="safePips" class="pip-row"></div>
+        </div>
+        <div class="bag-visual" aria-label="Omen dice currently in the bag">
+          <span>OMEN</span>
+          <div id="omenPips" class="pip-row"></div>
+        </div>
+      </section>
+
+      <section class="panel character-panel" aria-labelledby="character-heading">
+        <h2 id="character-heading">Characters</h2>
+        <div id="characterList" class="character-list"></div>
+        <button id="addCharacter" type="button">+ Add Character</button>
+        <p id="characterLimit" class="muted"></p>
+        <label>Selected character name <input id="characterName" type="text" maxlength="120" /></label>
+        <div class="button-pair"><button id="renameCharacter" type="button">Rename</button><button id="removeCharacter" type="button">Remove Character</button></div>
+        <p id="characterLock" class="muted"></p>
+        <p>Strain: <span id="strainSummary">None</span></p>
+        <div class="wounds-line">
+          <span>Wounds</span>
+          <strong id="woundCount">0</strong>
+          <div id="woundPips" class="wound-pips"></div>
+        </div>
+        <dl class="status-list">
+          <div><dt>Automatic Flaw</dt><dd id="autoFlaw">No</dd></div>
+          <div><dt>Cheat Death</dt><dd id="cheatStatus">Available</dd></div>
+          <div><dt>Status</dt><dd id="characterStatus">Active</dd></div>
+        </dl>
+        <button id="revive" class="ghost-button" type="button">Manual Status Reset</button>
+      </section>
+
+      <section class="panel check-panel" aria-labelledby="check-heading">
+        <h2 id="check-heading">Make A Check</h2>
+        <p id="checkingFor" class="notice calm" aria-live="polite"></p>
+        <label>Aspect name (optional, e.g. Courage) <input id="aspectName" type="text" /></label>
+        <div class="form-grid">
+          <label>
+            Aspect
+            <select id="aspect"></select>
+          </label>
+          <label class="checkbox-line">
+            <input id="manualTn" type="checkbox" />
+            Manual TN
+          </label>
+          <label>
+            Base TN
+            <input id="baseTn" type="number" min="1" max="30" value="7" />
+          </label>
+          <label>
+            Difficulty
+            <select id="difficulty"></select>
+          </label>
+        </div>
+        <div class="tn-strip">
+          <span>Final TN</span>
+          <strong id="finalTn">7</strong>
+        </div>
+        <div class="counter-grid">
+          <div class="counter">
+            <span>Edges</span>
+            <button id="edgeMinus" type="button" aria-label="Decrease Edges">-</button>
+            <input id="edgeCount" type="number" min="0" max="2" value="0" />
+            <button id="edgePlus" type="button" aria-label="Increase Edges">+</button>
+          </div>
+          <div class="counter">
+            <span>Flaws</span>
+            <button id="flawMinus" type="button" aria-label="Decrease Flaws">-</button>
+            <input id="flawCount" type="number" min="0" max="2" value="0" />
+            <button id="flawPlus" type="button" aria-label="Increase Flaws">+</button>
+          </div>
+        </div>
+        <div class="toggle-grid">
+          <label><input id="forcedOmen" type="checkbox" /> Forced Omen / Facing Evil</label>
+          <label><input id="risky" type="checkbox" /> Risky</label>
+          <label><input id="harmless" type="checkbox" /> Harmless</label>
+        </div>
+        <div class="net-box">
+          <span>Declared Edges: <strong id="declaredEdges">0</strong></span>
+          <span>Declared Flaws: <strong id="declaredFlaws">0</strong></span>
+          <span>Automatic Flaws: <strong id="automaticSources">None</strong></span>
+          <span>Total Flaws: <strong id="totalFlaws">0</strong></span>
+          <span>Net Result: <strong id="netResult">Normal Check</strong></span>
+          <span>Bag Draw: <strong id="drawCount">2</strong></span>
+        </div>
+        <button id="reachBag" class="primary-button" type="button">Reach Into The Bag</button>
+      </section>
+
+      <section class="panel result-panel" aria-labelledby="result-heading">
+        <div class="panel-heading">
+          <h2 id="result-heading">Result</h2>
+          <button id="reroll" class="ghost-button" type="button" disabled>Reroll Same Dice</button>
+        </div>
+        <p id="checkSnapshot" class="notice calm" hidden></p>
+        <div id="resultPanel" aria-live="polite"></div>
+        <div class="resolution-bar">
+          <button id="rollDice" type="button" disabled>Roll Dice</button>
+          <button id="useOriginal" type="button" disabled>Use Original</button>
+          <button id="useReroll" type="button" disabled>Use Reroll</button>
+          <button id="finishCheck" type="button" disabled>Finish Check</button>
+          <button id="takeWound" type="button" disabled>Take Wound</button>
+          <button id="cheatDeath" type="button" disabled>Cheat Death</button>
+          <button id="valiant" type="button" disabled>Valiant Sacrifice</button>
+          <button id="cancelCheck" type="button" disabled>Cancel Check</button>
+          <button id="recordStrain" type="button">Record Strain</button>
+        </div>
+      </section>
+
+      <details class="panel host-tools">
+        <summary>Host Tools</summary>
+        <p class="muted">Corrections must preserve 13 Omens across the Host, bag, and all characters. Cancel or resolve a pending Check before correcting character state.</p>
+        <div class="toggle-grid">
+          <label><input id="autoApplyStrainFlaw" type="checkbox" /> Auto-apply Strain Flaw</label>
+          <label><input id="lockActDuringPendingCheck" type="checkbox" checked /> Lock Act during pending Check</label>
+        </div>
+        <label>Character <select id="manualCharacter"></select></label>
+        <div class="manual-grid">
+          <label>Safe Dice In Bag <input id="manualSafe" type="number" min="0" max="99" /></label>
+          <label>Omen Dice In Bag <input id="manualOmen" type="number" min="0" max="13" /></label>
+          <label>Host Omens <input id="manualHost" type="number" min="0" max="13" /></label>
+          <label><input id="manualCheatDeath" type="checkbox" /> Cheat Death used</label>
+          <label>Strain by Aspect (JSON, e.g. {"Courage":1}) <textarea id="manualStrain" rows="3"></textarea></label>
+          <label>Character Wounds <input id="manualWounds" type="number" min="0" max="4" /></label>
+          <label>Act <select id="manualAct"></select></label>
+          <label>Status
+            <select id="manualStatus">
+              <option value="true">Active</option>
+              <option value="false">Dead / Despair</option>
+            </select>
+          </label>
+        </div>
+        <button id="applyManual" type="button">Apply Host Tools</button>
+      </details>
+
+      <section class="panel persistence-panel" aria-labelledby="persistence-heading">
+        <div class="panel-heading">
+          <h2 id="persistence-heading">Save / Import</h2>
+          <button id="exportState" type="button">Export Game State</button>
+        </div>
+        <textarea id="importText" rows="8" spellcheck="false" aria-label="Import or exported JSON game state"></textarea>
+        <button id="importState" type="button">Import Game State</button>
+      </section>
+
+      <section class="panel history-panel" aria-labelledby="history-heading">
+        <div class="panel-heading">
+          <h2 id="history-heading">History</h2>
+          <button id="clearLog" class="ghost-button" type="button">Clear Log</button>
+        </div>
+        <ol id="historyList" class="history-list"></ol>
+      </section>
+    </main>
+    </fieldset>
+
+    <script src="js/rules.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/socket.js"></script>
+    <script src="js/multiplayer.js"></script>
+  </body>
+</html>

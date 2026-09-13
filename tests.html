@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>13 Omens Rules Tests</title>
+    <style>
+      body { background: #111; color: #eee; font-family: system-ui, sans-serif; padding: 2rem; }
+      .pass { color: #9fda90; }
+      .fail { color: #ff7b86; }
+    </style>
+  </head>
+  <body>
+    <h1>13 Omens Rules Tests</h1>
+    <pre id="out"></pre>
+    <script src="js/rules.js"></script>
+    <script>
+      const out = document.getElementById("out");
+      function log(text, cls) {
+        const line = document.createElement("div");
+        line.textContent = text;
+        if (cls) line.className = cls;
+        out.append(line);
+      }
+      const tests = [
+        ["normal draw", () => ThirteenOmensRules.determineDrawCount(0, 0) === 2],
+        ["edge cancellation", () => ThirteenOmensRules.determineDrawCount(2, 1) === 3],
+        ["act 2 wound", () => ThirteenOmensRules.detectWound([{ type: "OMEN", result: 2 }], "Act 2").triggered],
+        ["insufficient dice", () => { try { ThirteenOmensRules.drawDice({ safe: 0, omen: 1 }, 2); return false; } catch { return true; } }],
+      ];
+      let failures = 0;
+      tests.forEach(([name, fn]) => {
+        const ok = fn();
+        failures += ok ? 0 : 1;
+        log(`${ok ? "PASS" : "FAIL"} ${name}`, ok ? "pass" : "fail");
+      });
+      log(failures ? `${failures} failed` : "All browser smoke tests passed", failures ? "fail" : "pass");
+    </script>
+  </body>
+</html>
