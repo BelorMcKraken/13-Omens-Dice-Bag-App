@@ -1,0 +1,223 @@
+
+> 13-omens-virtual-dice-bag@0.1.0 test
+> node tests/rules.test.js && node tests/state.test.js && node tests/ui.test.js && node tests/multiplayer.test.js && node tests/network-client.test.js && node tests/checks.test.js
+
+PASS Normal Check draws exactly 2 dice
+PASS One Edge draws 3 and uses highest two
+PASS Two Edges draw 4 and use highest two
+PASS One Flaw draws 3 and uses lowest two
+PASS Two Flaws draw 4 and uses lowest two
+PASS 1 Edge + 1 Flaw draws 2
+PASS 2 Edges + 1 Flaw acts as 1 Edge
+PASS Omen die discarded by an Edge can still cause a Wound
+PASS Only one Wound can result from multiple qualifying Omen Dice
+PASS Act 1 wounds on Omen 1 only
+PASS Act 2 wounds on Omen 1-2
+PASS Act 3 wounds on Omen 1-3
+PASS Taking a Wound decreases bag Omen count and increases Wounds
+PASS Cheat Death decreases Safe Dice but does not increase Omen Wounds
+PASS Cheat Death cannot be used if no Safe Die was rolled
+PASS Three Wounds automatically generate one Flaw
+PASS Fourth Wound returns existing Wound Omens to the bag and removes character
+PASS Reroll Same Dice preserves the original Safe/Omen composition
+PASS Dice cannot be drawn beyond available bag contents
+PASS Total Omen economy never silently creates or destroys Omen Dice
+PASS Forced Omen alone: 2 Bag dice + 1 Forced Omen
+PASS Forced Omen + 1 Edge: 1 Bag die + 1 Forced Omen
+PASS Forced Omen + 2 Edges: 2 Bag dice + 1 Forced Omen, keep highest two
+PASS Forced Omen + 1 ordinary Flaw: 3 Bag dice + Forced Omen
+PASS Forced Omen + Edge + ordinary Flaw has one net Flaw
+PASS Forced Omen rolls above Wound threshold enters Bag after Check
+PASS Bag Omen causes Wound while Forced Omen does not; Forced Omen enters Bag
+PASS Forced Omen itself causes Wound and does not also enter Bag
+PASS Multiple qualifying Omens create only one Wound
+PASS Harmless + Forced Omen puts Forced Omen in Bag and adds no Wound
+PASS Cheat Death + Forced Omen removes Safe and all Omens return/enter Bag
+PASS Valiant Sacrifice eligibility is determined after DRAW before ROLL
+PASS Valiant Sacrifice generates no die results
+PASS Valiant Sacrifice returns existing Wounds and Forced Omen appropriately
+PASS Reroll recomputes retained dice
+PASS Reroll can change Failure into Success
+PASS Reroll can introduce a qualifying Omen
+PASS Reroll can remove a previously qualifying Omen from selected active result
+PASS No persistent Wound state changes until final roll selection/resolution
+PASS Canceled pending Check restores Bag state
+PASS Canceled Forced Omen returns to Host pool
+PASS 3 Wounds + 1 Edge + Forced Omen composes as one net Flaw
+PASS Omen total remains 13 throughout Forced Omen pathway
+PASS Randomized stress invariants
+PASS New Game creates one default character and preserves preferences
+PASS Add up to six stable IDs; reject seventh atomically
+PASS Cannot delete final character
+PASS Trim names, allow duplicates, reject blank names
+PASS Wounds affect only Check owner
+PASS Three-Wound automatic Flaw belongs to selected character
+PASS Cheat Death is independent per character
+PASS Strain is independent and OFF adds no Flaw
+PASS Strain ON adds one Flaw for matching Aspect only
+PASS All five effective Flaws survive cancellation and physical dice math
+PASS Death returns only owner Wounds, preserving other state
+PASS Valiant Sacrifice belongs to Check owner even with different selection
+PASS Omen invariant includes all six and Forced commitment
+PASS Pending snapshots ID and switching is blocked
+PASS Changing selection in imported state does not transfer Wound ownership
+PASS Pending owner cannot be removed; another character can
+PASS Removal returns Wounds and selects a surviving character
+PASS Act lock blocks changes until cancel or resolution
+PASS Act 1 snapshot survives changing story Act to 3 before rolling
+PASS Act 2 Omen 2 retains Wound after story advances before resolution
+PASS Act 1 original and reroll retain threshold after story becomes Act 2
+PASS Schema 2 single-character pending import migrates ID and Act
+PASS Pending Check export and localStorage reload preserve snapshots and IDs
+PASS Malformed character imports reject atomically
+PASS Inactive character cannot draw
+PASS Host corrections target one character and protect pending transaction
+PASS Invalid Host correction and repeated resolution leave state untouched
+PASS Harmless named Aspect Strain applies only to pending owner
+28 state tests passed
+PASS Roster UI reaches six, disables seventh, renames and selects
+PASS Final character removal disabled and new game restores one
+PASS UI explains character-specific Wounds and optional Courage Strain
+PASS Pending Check disables Act and character controls then cancel unlocks
+PASS Unlocked story Act stays distinct from Check Act across refresh
+PASS Resolution unlocks Act and inactive characters cannot draw
+PASS Host UI edits only targeted character and exports all fields
+PASS Character names in history are escaped as text
+8 DOM interaction tests passed (no browser layout verification)
+✔ Host creates room with valid New Game state (1.6283ms)
+✔ Room codes are readable and unique (1.8069ms)
+✔ Join trims name and normalizes room code (0.1761ms)
+✔ Nonexistent room gives readable error (0.3824ms)
+✔ Player IDs are stable and independent of sockets (0.2229ms)
+✔ Creator has Host role (0.1587ms)
+✔ Joiner has Player role despite role spoofing attempts (0.1884ms)
+✔ Rooms have independent state and character IDs (0.8558ms)
+✔ Host can change Act (0.4067ms)
+✔ Player cannot change Act (0.2696ms)
+✔ Player cannot add or remove Omens (0.2136ms)
+✔ Player cannot unassign another player (0.2561ms)
+✔ Malformed management payloads rejected without changes (0.8118ms)
+✔ Host assigns character to Player (0.1427ms)
+✔ Assignment included in shared public snapshot (0.1448ms)
+✔ Two Players cannot own one character (0.1336ms)
+✔ Host can unassign (0.1005ms)
+✔ Host can reassign to another character (0.2785ms)
+✔ Disconnected player retains assignment and reserves it (0.1749ms)
+✔ Reconnect restores character assignment (0.1894ms)
+✔ Disconnected player remains in room (0.0834ms)
+✔ Valid token reconnects a player (0.1189ms)
+✔ Reconnect preserves player ID (0.0881ms)
+✔ Reconnect preserves display name (0.0719ms)
+✔ Invalid reconnect token cannot steal identity (0.1231ms)
+✔ Host reconnect retains Host role (0.0897ms)
+✔ Host reconnect never duplicates Host (0.0844ms)
+✔ Replaced socket loses permissions immediately; its disconnect is harmless (0.1138ms)
+✔ Tokens are private, cryptographic, and never in logs (0.2037ms)
+✔ Six players plus unassigned Host allowed, seventh rejected (0.2023ms)
+✔ Assigned Host occupies one of six player places (0.1509ms)
+✔ Server respects six-character and final-character limits (0.666ms)
+✔ Removal clears assignment; reset clears obsolete assignments (0.4272ms)
+✔ Stale Host snapshots are rejected atomically (0.4749ms)
+✔ Player cannot replace shared state or import state (0.205ms)
+✔ Invalid economy and malformed Check snapshots rejected (0.2618ms)
+✔ Pass 1 Host snapshot submission is retired for authoritative Checks (0.139ms)
+✔ Unknown sockets and cross-room assignment targets rejected (0.1514ms)
+✔ Express serves app and Socket.IO while keeping server source private (3333.9722ms)
+✔ Four real clients receive Act changes immediately (113.0458ms)
+✔ Four real clients receive Bag changes immediately (109.0608ms)
+✔ Character Wound corrections synchronize to Players (125.0548ms)
+✔ Added characters appear on all Player clients (125.3902ms)
+✔ Removed characters disappear on all Player clients (116.8335ms)
+✔ Another room never receives foreign updates (140.3876ms)
+✔ Real Player receives assignment and recovers it after reconnect (156.4188ms)
+✔ Real Host disconnect/reconnect leaves Players connected (150.1213ms)
+✔ Forged real Player events are denied by the Socket.IO handlers (125.037ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4512.7547
+✔ Multiplayer starts from server New Game, preserving independent solo save (122.7093ms)
+✔ Client Host management dispatch synchronizes canonical server state (57.4823ms)
+✔ Player store rejects Host mutations even before server validation (61.9195ms)
+✔ Client Check APIs send actions to authoritative server (77.2264ms)
+✔ Player refresh restores same identity from localStorage (85.0207ms)
+✔ Host refresh restores Host and never pushes old local game (76.2465ms)
+✔ Invalid saved identity fails gracefully and is cleared (93.543ms)
+✔ Server restart's missing room clears stale identity (77.8909ms)
+✔ Duplicate live identity replaces old session and prevents writes (76.2838ms)
+✔ Loss of server connection is visible and blocks stale mutations (61.8932ms)
+✔ Transport interruption reconnects automatically and clears stale error (1591.6182ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2386.7312
+✔ Check request snapshots character, Player, Act and conditions without drawing (4.0573ms)
+✔ Only Host can call a Check (0.749ms)
+✔ Known Player Rating updates TN but Host conditions stay immutable (0.7059ms)
+✔ Fake Rating and arbitrary base TN rejected (0.5109ms)
+✔ Host manual TN locks Player Rating (0.4641ms)
+✔ Host can lock a nonmanual Rating (0.4775ms)
+✔ Player cannot submit fake draw or random results (0.9233ms)
+✔ Another Player cannot draw, roll, reroll or resolve Jasper's Check (1.7322ms)
+✔ Server draws without replacement and keeps numeric results absent (0.7161ms)
+✔ Server rolls each die and computes kept dice, total and Wound eligibility (0.8352ms)
+✔ Authoritative composition: Normal (0.4919ms)
+✔ Authoritative composition: One Edge (0.3868ms)
+✔ Authoritative composition: Two Edges (0.2974ms)
+✔ Authoritative composition: One Flaw (0.3523ms)
+✔ Authoritative composition: Two Flaws (0.3595ms)
+✔ Authoritative composition: Edge cancels Flaw (0.3694ms)
+✔ Authoritative composition: Three-Wound Flaw (0.374ms)
+✔ Authoritative composition: Strain ON (0.4223ms)
+✔ Authoritative composition: Strain OFF (0.3872ms)
+✔ Authoritative composition: Forced Omen (0.501ms)
+✔ Authoritative composition: Forced Omen plus Edge (0.4156ms)
+✔ Authoritative composition: Forced Omen plus Flaw (0.376ms)
+✔ Authoritative composition: Five effective Flaws (0.5147ms)
+✔ Other Aspect Strain adds no Flaw (0.485ms)
+✔ Insufficient dice reject draw without committing Forced Omen (0.6038ms)
+✔ Bag Omen Wound moves exactly one Omen (0.7652ms)
+✔ Forced Omen Wound never also enters Bag (0.8262ms)
+✔ Bag Omen selected as Wound while Forced Omen enters Bag (0.8065ms)
+✔ Several qualifying Omens cause only one Wound (0.7817ms)
+✔ Harmless Forced Omen becomes Strain without Wounds (0.9876ms)
+✔ Cheat Death removes Safe die and tracks only Check owner's usage (0.8939ms)
+✔ Cheat Death fails without a Safe die (0.725ms)
+✔ Fourth Wound returns only dead character's Omens (1.191ms)
+✔ Valiant Sacrifice produces no rolls and returns Wounds plus Forced Omen (0.7169ms)
+✔ Valiant Sacrifice unavailable without three Wounds (0.4927ms)
+✔ Reroll preserves exact dice IDs/types/sources and original results (2.2296ms)
+✔ Risky failure is a reminder without invented consequences (0.7313ms)
+✔ Act snapshot at request controls draw and roll even after story advances (0.5876ms)
+✔ Act lock blocks from request through resolution (0.693ms)
+✔ Only one unresolved Check per room (0.2476ms)
+✔ Roll-before-draw and rating-after-draw are rejected (0.3757ms)
+✔ Duplicate Draw and Roll cannot consume dice twice (0.5414ms)
+✔ Duplicate reroll and Wound resolution rejected (0.7842ms)
+✔ Duplicate Cheat Death and sacrifice rejected (1.8655ms)
+✔ Host cancellation before draw and after Forced commitment preserves economy (0.7191ms)
+✔ Player cannot cancel or take over; Host takeover revokes Player actions (0.6547ms)
+✔ Unassigned character gives Host control without a Player slot (0.3935ms)
+✔ Pending assignment, owner removal, reset and import are locked (0.66ms)
+✔ Host cannot import fabricated Check results (0.2736ms)
+✔ Player and Host reconnect preserve exact requested Check (0.5487ms)
+✔ Player and Host reconnect preserve exact drawn Check (0.6269ms)
+✔ Player and Host reconnect preserve exact rolled Check (0.7064ms)
+✔ Check actions in separate rooms cannot affect each other's Bag or results (0.6827ms)
+✔ Real Host and two Players receive identical server Check phases and results (131.0698ms)
+ℹ tests 54
+ℹ suites 0
+ℹ pass 54
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 175.7198

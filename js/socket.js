@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : window, function () {
   "use strict";
   const IDENTITY_KEY = "thirteen-omens-multiplayer-identity-v1";
-  const CHECK_ACTIONS = new Set(["drawCheck", "rollCheck", "rerollCheck", "chooseRoll", "finishCheck", "cancelCheck", "takeWound", "cheatDeath", "valiantSacrifice"]);
+  const CHECK_EVENTS = { drawCheck: "check:draw", rollCheck: "check:roll", rerollCheck: "check:reroll", chooseRoll: "check:select-roll", finishCheck: "check:finish", cancelCheck: "check:cancel", takeWound: "check:take-wound", cheatDeath: "check:cheat-death", valiantSacrifice: "check:valiant-sacrifice" };
 
   function createClient({ ioFactory, store, storage, onChange = () => {}, url }) {
     let socket, room = null, session = null, status = "idle", error = "", busy = false, intent = null, active = false;
@@ -100,7 +100,7 @@
 
     async function mutate(event, payload) {
       if (status !== "connected" || !active) throw new Error("Server connection lost. Wait for reconnection before changing the game.");
-      if (me()?.role !== "HOST") throw new Error("Host permission required.");
+      if ((!event.startsWith("check:") || ["check:create", "check:cancel", "check:takeover"].includes(event)) && me()?.role !== "HOST") throw new Error("Host permission required.");
       if (busy) throw new Error("Wait for the current action to finish.");
       busy = true; error = ""; notify();
       try {
@@ -117,14 +117,18 @@
     }
 
     function dispatch(action, args, snapshot) {
-      if (status !== "connected" || me()?.role !== "HOST" || busy) return Promise.reject(new Error("Connected Host permission required; wait for any pending action."));
-      if (CHECK_ACTIONS.has(action)) {
-        // Existing Check engine runs only in the Host browser during Pass 1.
-        const draft = store.createStore({ storage: null, initialState: snapshot });
-        draft[action](...args);
-        return mutate("game:check-state", { gameState: draft.getState(), baseVersion: room.gameVersion });
+      if (Object.hasOwn(CHECK_EVENTS, action)) {
+        if (action !== "chooseRoll" && args.length) return Promise.reject(new Error("Multiplayer Check actions accept no client dice or randomness."));
+        return checkAction(CHECK_EVENTS[action], action === "chooseRoll" ? { rollName: args[0] } : {});
       }
+      if (status !== "connected" || me()?.role !== "HOST" || busy) return Promise.reject(new Error("Connected Host permission required; wait for any pending action."));
       return mutate("game:action", { action, args, baseVersion: room.gameVersion });
+    }
+
+    function checkAction(event, details = {}) {
+      const check = room?.gameState.currentCheck;
+      if (!check) return Promise.reject(new Error("No Check pending."));
+      return mutate(event, { ...details, checkId: check.id, baseVersion: room.gameVersion });
     }
 
     function leave() {
@@ -141,6 +145,8 @@
       join: (roomCode, displayName) => start("room:join", { roomCode, displayName }),
       resume: () => session ? start("room:reconnect", session) : Promise.reject(new Error("No saved multiplayer identity.")),
       assign: (playerId, characterId) => mutate("player:assign-character", { playerId, characterId }),
+      callCheck: (configuration) => mutate("check:create", { configuration, baseVersion: room.gameVersion }),
+      check: checkAction,
     };
   }
   return { createClient, IDENTITY_KEY };

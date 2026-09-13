@@ -12,7 +12,7 @@ function memoryStorage(initial = {}) {
   return { getItem: (key) => data.get(key) || null, setItem: (key, value) => data.set(key, value), removeItem: (key) => data.delete(key) };
 }
 async function fixture(t) {
-  const service = createServer({ log: () => {} });
+  const service = createServer({ log: () => {}, rng: (min) => min });
   service.server.listen(0, "127.0.0.1"); await once(service.server, "listening");
   const url = `http://127.0.0.1:${service.server.address().port}`;
   const clients = [];
@@ -49,15 +49,20 @@ test("Player store rejects Host mutations even before server validation", async 
   const f=await fixture(t); await assert.rejects(f.bob.store.setAct("Act 2"), /Host permission/);
   assert.equal(f.bob.store.getState().act, "Prologue");
 });
-test("Client Check actions compute locally and publish validated snapshots", async t => {
+test("Client Check APIs send actions to authoritative server", async t => {
   const f=await fixture(t); await f.host.store.setAct("Act 1");
-  await f.host.store.drawCheck({aspect:"Courage",baseTn:7,forcedOmen:true},()=>0);
-  const id=f.host.store.getState().currentCheck.id;
-  await f.host.store.rollCheck(()=>1); await f.host.store.takeWound();
+  await f.host.network.assign(f.bob.network.view().player.id, f.host.store.getState().selectedCharacterId);
+  await f.host.network.callCheck({characterId:f.host.store.getState().selectedCharacterId,aspect:"Courage",rating:"Average",manualTn:false,allowPlayerRating:true,edges:0,flaws:0,difficultyModifier:0,risky:false,harmless:false,forcedOmen:true});
+  // Synchronize the receiving client through the actual room broadcast.
+  if (!f.bob.store.getState().currentCheck) await once(f.bob.changes,"view");
+  await f.bob.store.drawCheck();
+  const id=f.bob.store.getState().currentCheck.id;
+  await f.bob.store.rollCheck(); await f.bob.store.takeWound();
   const room=f.service.manager.rooms.get(f.host.network.view().room.code);
   assert.equal(room.gameState.currentCheck.id,id); assert.equal(room.gameState.characters[0].wounds,1);
   assert.equal(room.gameState.currentCheck.phase,"RESOLVED");
 });
+
 test("Player refresh restores same identity from localStorage", async t => {
   const f=await fixture(t); const before=f.bob.network.view().player;
   await f.host.network.assign(before.id,f.host.store.getState().selectedCharacterId);

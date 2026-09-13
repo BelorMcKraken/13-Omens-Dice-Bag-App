@@ -9,6 +9,7 @@
 
   const DIE_SAFE = "SAFE";
   const DIE_OMEN = "OMEN";
+  const PHASE_REQUESTED = "AWAITING_PLAYER";
   const PHASE_DRAWN = "DRAWN";
   const PHASE_ROLLED = "ROLLED";
   const PHASE_AWAITING_WOUND = "AWAITING_WOUND_RESOLUTION";
@@ -388,6 +389,7 @@
     automaticFlawSources,
     DIE_SAFE,
     DIE_OMEN,
+    PHASE_REQUESTED,
     PHASE_DRAWN,
     PHASE_ROLLED,
     PHASE_AWAITING_WOUND,

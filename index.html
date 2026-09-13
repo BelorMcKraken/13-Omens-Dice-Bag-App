@@ -45,7 +45,7 @@
       <input id="copyCodeFallback" aria-label="Copy room code" readonly hidden />
       <p id="myIdentity"></p><p id="hostConnection" role="status"></p>
       <h3>Players &amp; character assignments</h3><div id="playersList"></div>
-      <p class="muted">Pass 1: the Host runs Checks in their browser. Players observe synchronized results. Dice are not yet server-authoritative.</p>
+      <p class="muted">The Host calls Checks. The assigned Player draws, rolls, and resolves; the server determines all dice and results. Everyone watches.</p>
       <button id="leaveMultiplayer" type="button">Return to Main Menu</button>
       <p class="muted">Your reconnect identity is kept for Resume. Use a separate browser profile for each person.</p>
       <details><summary>Room session log</summary><ol id="roomActivity" class="history-list"></ol></details>
@@ -55,6 +55,27 @@
       <p id="playerGameSummary" aria-live="polite"></p>
       <h3 id="playerCharacterName"></h3><p id="playerCharacterStatus"></p><p id="playerStrain"></p>
       <p id="playerCheck" class="notice calm" aria-live="polite"></p>
+    </section>
+    <section id="multiplayerCheckPanel" class="panel multiplayer-panel" aria-labelledby="mp-check-heading" hidden>
+      <h2 id="mp-check-heading">Shared Check</h2>
+      <p id="mpCheckOwner" class="notice calm" aria-live="polite"></p>
+      <p id="mpCheckConditions"></p><p id="mpCheckWaiting" role="status"></p>
+      <label id="mpRatingLabel">Confirm Rating <select id="mpRating"></select></label>
+      <p id="mpCheckTN"></p>
+      <div id="mpCheckResult" aria-live="polite"></div>
+      <div class="resolution-bar">
+        <button id="mpDraw" type="button" hidden>Reach Into The Bag</button>
+        <button id="mpRoll" type="button" hidden>Roll Dice</button>
+        <button id="mpReroll" type="button" hidden>Reroll Same Dice</button>
+        <button id="mpOriginal" type="button" hidden>Use Original</button>
+        <button id="mpUseReroll" type="button" hidden>Use Reroll</button>
+        <button id="mpFinish" type="button" hidden>Finish Check</button>
+        <button id="mpWound" type="button" hidden>Take Wound</button>
+        <button id="mpCheat" type="button" hidden>Cheat Death</button>
+        <button id="mpValiant" type="button" hidden>Valiant Sacrifice</button>
+        <button id="mpTakeover" type="button" hidden>Take Over Check</button>
+        <button id="mpCancel" type="button" hidden>Cancel Check</button>
+      </div>
     </section>
     <fieldset id="gameControls" class="game-controls">
     <main id="gameInterface" class="app-shell" hidden>
@@ -119,6 +140,7 @@
       <section class="panel check-panel" aria-labelledby="check-heading">
         <h2 id="check-heading">Make A Check</h2>
         <p id="checkingFor" class="notice calm" aria-live="polite"></p>
+        <label id="ratingPermission" hidden><input id="allowPlayerRating" type="checkbox" checked /> Allow Player to confirm Rating (manual TN stays Host-controlled)</label>
         <label>Aspect name (optional, e.g. Courage) <input id="aspectName" type="text" /></label>
         <div class="form-grid">
           <label>

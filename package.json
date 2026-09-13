@@ -2,11 +2,11 @@
   "name": "13-omens-virtual-dice-bag",
   "version": "0.1.0",
   "private": true,
-  "description": "13 Omens local dice bag and LAN multiplayer foundation",
+  "description": "13 Omens solo dice bag and server-authoritative multiplayer",
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
-    "test": "node tests/rules.test.js && node tests/state.test.js && node tests/ui.test.js && node tests/multiplayer.test.js && node tests/network-client.test.js"
+    "test": "node tests/rules.test.js && node tests/state.test.js && node tests/ui.test.js && node tests/multiplayer.test.js && node tests/network-client.test.js && node tests/checks.test.js"
   },
   "engines": {
     "node": ">=22"

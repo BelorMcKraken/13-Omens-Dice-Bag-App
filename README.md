@@ -1,22 +1,104 @@
 # 13 Omens - Virtual Dice Bag
 
-A complete local-browser utility for running the tabletop horror RPG **13 Omens**. This is a Host/GM-facing persistent virtual dice bag, not a character builder and not a multiplayer app.
+A virtual dice bag for the tabletop horror RPG **13 Omens**, with independent **Solo** saves and **server-authoritative multiplayer**. The existing horror interface and shared rules engine serve both modes.
 
-Open `index.html` in a modern browser and use it immediately. No build step, Node project, database, or backend is required.
+Open `index.html` directly for Solo, or run the Node server below for Solo and multiplayer. No frontend build step or database is required.
 
-## Project Structure
+## Run locally
 
-- `index.html` - semantic application shell
-- `css/styles.css` - responsive horror-themed interface styling
-- `js/rules.js` - reusable rules engine
-- `js/state.js` - single source of truth, validation, localStorage persistence
-- `js/app.js` - DOM rendering and UI event handling
-- `tests/rules.test.js` - Node-compatible programmatic rule tests
-- `tests.html` - small browser smoke-test page
+Use Node.js 22 or later (verified with Node 24.14). From the project directory:
+
+```sh
+npm ci
+npm start
+```
+
+Open **http://localhost:3000**. Use `npm install` when deliberately updating dependencies, `npm run dev` for server watch mode, and `npm test` for the complete suite. The committed lockfile supports `npm ci`.
+
+The server listens on `0.0.0.0`, using `process.env.PORT` or port 3000. To choose a port in PowerShell:
+
+```powershell
+$env:PORT = '3001'
+npm start
+```
+
+For a LAN game, connect devices to the same network, find the server computer's IPv4 address with `ipconfig`, and open `http://<that-address>:3000` on each device. Use the same address consistently: browser storage is origin-specific. The server computer must remain running and its firewall must permit the connection. No router, firewall, tunnel, or hosting settings are changed by this project.
+
+## Project files
+
+| Files | Purpose |
+| --- | --- |
+| `index.html`, `css/styles.css` | Existing application shell and responsive horror UI, extended with room and Check screens |
+| `js/rules.js` | Shared pure rules, usable in the browser and Node |
+| `js/state.js` | Shared validated state transitions; Solo persistence and isolated server stores |
+| `js/app.js` | Existing game controls and reusable Check result rendering |
+| `js/socket.js`, `js/multiplayer.js` | Network intent transport, reconnect identity, lobby and multiplayer controls |
+| `server/server.js` | Express/Socket.IO entry point, static assets and health route |
+| `server/room-manager.js`, `server/validation.js` | Canonical rooms, identities, permissions and input/state validation |
+| `server/check-manager.js`, `server/socket-handlers.js` | Authoritative Check transitions and Socket.IO routing |
+| `tests/*.test.js`, `tests.html` | Automated regressions and browser smoke tests |
+| `package.json`, `package-lock.json`, `.gitignore` | Runtime dependencies, scripts and generated-file exclusions |
+
+## Multiplayer Pass 2
+
+1. Choose **Create Room**, enter the Host name, and share the room code. Players choose **Join Room** and enter their names and code.
+2. The Host manages the 1–6 character roster and assigns characters to connected Player identities. Disconnected Players retain their assignments and seats. A Host can also hold an assignment.
+3. The Host selects a character, Aspect, Rating or manual TN, Difficulty, Edges, Flaws, Risky, Harmless and Forced Omen, then selects **Call for Check**.
+4. The assigned Player receives the request. If the Host permits Rating confirmation, the Player can select a known Rating before drawing. Manual TN and all other Host conditions remain locked.
+5. The Player selects **Reach Into the Bag**. The server draws without replacement, commits any Forced Omen, and broadcasts dice types and sources without numbers.
+6. The Player selects **Roll Dice**, or eligible **Valiant Sacrifice** before rolling. The server generates results and everyone sees the same outcome.
+7. The Player can use the existing one-reroll utility, select original/reroll, finish, take a Wound or use Cheat Death when eligible. Harmless Strain and all Omen transfers are resolved on the server.
+
+There is **one unresolved Check per room**. Other Players observe with no action buttons. The Host sees the same progression and can **Cancel Check** or explicitly **Take Over Check**. Takeover keeps control with the Host until resolution/cancellation, including after the Player reconnects. Checks for unassigned or Host-assigned characters start under Host control. Host actions on behalf of a character are logged.
+
+### State authority and permissions
+
+Multiplayer clients send intents, never authoritative dice or outcomes. Production draws and d6 faces use Node `crypto.randomInt` on the server. A constructor-injected RNG supports deterministic tests; it is not exposed over the socket. Shared `js/rules.js` and `js/state.js` perform composition, retained dice, totals, Wound eligibility, resolution and Omen bookkeeping, avoiding a second implementation of the rules.
+
+The server validates authenticated room identity, role, current assignment, Check ownership, active character, phase, allowed payload fields, version, eligibility and the 13-Omen invariant. Only the Host calls Checks or changes management settings. Players can control only their assigned pending Check. The pending owner/character assignment is locked. Manual corrections, imports and reset are blocked while a Check is unresolved; multiplayer imports cannot inject Check records/results. The Host remains a trusted game administrator with validated correction tools outside a pending Check.
+
+The existing schema remains version `3`; multiplayer adds the `AWAITING_PLAYER` phase and Check ownership/configuration metadata to `currentCheck`. The Check snapshots the Act **when the Host calls it**. Solo continues to snapshot on drawing. Changing the story Act with locking disabled never changes the pending Check's Act.
+
+### Reconnect and duplicate actions
+
+Rooms hold stable player IDs and private cryptographic reconnect tokens. Only token hashes are kept in server identity records; tokens are never broadcast or logged. Browser refresh or temporary network loss restores the same identity, assignment, phase, dice and result from the server without drawing or rolling again. A disconnected owner leaves the Check pending and the Host sees a waiting/takeover message.
+
+A browser profile stores one resumable identity for this app origin. Reusing it in another tab replaces the old live connection; use separate browser profiles/devices for different Players. Leaving for Solo retains the resumable identity, while the saved mode prevents Solo refresh from unexpectedly rejoining. Multiplayer snapshots never overwrite the Solo save.
+
+Each mutation carries a `baseVersion`; existing-Check intents also carry `checkId`. The server handles each validated transition synchronously, advances the version, and rejects stale or wrong-phase requests. Repeated Draw, Roll, Reroll or resolution requests cannot apply twice. Clients disable controls while busy/offline, refresh stale snapshots, and never blindly retry an uncertain mutation after an acknowledgement timeout.
+
+### Socket contract
+
+Successful acknowledgements use `{ ok: true, room?, session? }`; errors use `{ ok: false, error: { code, message } }`. `room:state` broadcasts canonical snapshots only within the affected room. Presence revisions are separate from game versions so presence updates do not silently change a pending game transaction.
+
+| Events | Access and payload |
+| --- | --- |
+| `room:create`, `room:join`, `room:reconnect` | Create/join a session or authenticate a saved reconnect identity |
+| `room:sync`, `room:leave` | Current session sync/leave |
+| `player:assign-character` | Host assignment management |
+| `game:action` | Host-only allowlisted game management with validated action arguments and version |
+| `check:create` | Host; `{ configuration, baseVersion }` |
+| `check:set-rating` | Check controller, only when permitted and before draw; `{ checkId, baseVersion, rating }` |
+| `check:draw`, `check:roll`, `check:reroll` | Check controller; `{ checkId, baseVersion }` |
+| `check:select-roll` | Check controller; `{ checkId, baseVersion, rollName }` |
+| `check:take-wound`, `check:cheat-death`, `check:valiant-sacrifice`, `check:finish` | Eligible Check controller; `{ checkId, baseVersion }` |
+| `check:cancel`, `check:takeover` | Host; `{ checkId, baseVersion }` |
+
+`configuration` contains `characterId`, `aspect`, `rating`, `manualTn`, `baseTn`, `allowPlayerRating`, `difficultyModifier`, `edges`, `flaws`, `risky`, `harmless` and `forcedOmen`. Ratings must be known; manual TN is Host-only. Automatic Flaws are calculated from server character state.
+
+The Pass-1 `game:check-state` endpoint is retired and rejects snapshots, including Host snapshots. `check:set-dice`, `check:set-result`, `check:set-total`, `check:set-wounds` and `check:replace-pending-check` explicitly reject outcomes. Extra payload fields such as supplied dice, totals or eligibility are rejected.
+
+### Hosting and limitations
+
+The existing Node/Express/Socket.IO setup remains compatible with `npm ci`, `npm start`, `process.env.PORT` and `0.0.0.0`. To update an existing Render deployment, push the changed project files to the same linked GitHub branch if auto-deploy is enabled; see [Render's deployment documentation](https://render.com/docs/deploys). No Render configuration or deployment was performed in this pass.
+
+Rooms exist only in one server process's memory. Server restart/redeploy loses rooms and reconnect targets; this is not permanent persistence or a multi-worker deployment. No accounts, database, chat, matchmaking, external integrations or infrastructure were added. Disconnected seats remain reserved; Host eviction and lost-token recovery are not implemented. Ratings are confirmed by Players because complete character Aspect sheets are not stored. Static-only hosting supports Solo, not multiplayer.
+
+A sensible next phase is durable room recovery across server restarts, followed by explicit seat/token recovery and usability improvements. Those are recommendations, outside this pass.
 
 ## Persistent Game State
 
-The app stores game state in `localStorage`, including the current Act, bag composition, Host Omens, character Wounds, character status, Cheat Death use, Strain, current pending Check, and the history log. Refreshing the browser should not erase the game, even if dice have been drawn but not rolled or a Wound is awaiting resolution.
+In Solo mode, the app stores game state in `localStorage`, including the current Act, bag composition, Host Omens, character Wounds, character status, Cheat Death use, Strain, current pending Check, and the history log. Refreshing the browser should not erase the game, even if dice have been drawn but not rolled or a Wound is awaiting resolution.
 
 The current state schema is version `3`. The existing localStorage key is retained. Valid older single-character saves and JSON imports migrate to `characters: [...]` and `selectedCharacterId`; the original character keeps their Wounds, Strain, status, and Cheat Death use and receives a persistent unique ID. Older phased Checks receive the migrated character ID and saved story Act when those snapshots are missing. Version 1 one-step Check data without phase information is discarded while persistent game state is retained. Migration is saved immediately on successful load so IDs survive refresh.
 
@@ -34,7 +116,7 @@ Host Tools has its own character selector for correcting Wounds, status, Cheat D
 
 **Auto-apply Strain Flaw** defaults **OFF**. Strain is always tracked and displayed. When ON, a matching Aspect with any Strain contributes exactly +1 Flaw. The optional Aspect name field supports names such as Courage or Fight; leaving it blank preserves the existing rating-based Aspect names. The existing rating and manual TN controls still determine the target number. Declared Flaws, Wound Flaws, matching Strain Flaws, Forced Omen Flaws, and their total are displayed separately.
 
-**Lock Act during pending Check** defaults **ON**. Every Check always snapshots both `characterId` and `act` at **Reach Into The Bag**; the project retains its existing `currentCheck` transaction field. All subsequent rolls, rerolls, and resolution use that Check's Act. The lock disables Act changes until resolution or cancellation. Turning it OFF permits changing the story Act, but never changes the pending Check's snapshot. The result panel displays both Acts explicitly. Both preferences and pending snapshots survive export, import, and refresh.
+**Lock Act during pending Check** defaults **ON**. Every Check snapshots both `characterId` and `act` at **Reach Into The Bag** in Solo or **Call for Check** in multiplayer; the project retains its existing `currentCheck` transaction field. All subsequent rolls, rerolls, and resolution use that Check's Act. The lock disables Act changes until resolution or cancellation. Turning it OFF permits changing the story Act, but never changes the pending Check's snapshot. The result panel displays both Acts explicitly. Both preferences and pending snapshots survive export, import, and refresh.
 
 ## Dice Bag Model
 
@@ -52,7 +134,7 @@ Checks now use an explicit transaction:
 1. **Reach Into The Bag** draws die identities and sources only.
 2. **Roll Dice** assigns d6 results and calculates the selected roll.
 3. Optional **Reroll Same Dice** preserves the exact same die types and sources, rolls new d6 faces, recalculates kept dice, success level, Risky failure, and Omen Wound eligibility.
-4. The Host may use **Use Original** or **Use Reroll**. Higher total is automatically selected as better; tied or table-specific cases can be selected manually.
+4. The controller may use **Use Original** or **Use Reroll**. Higher total is automatically selected as better; tied or table-specific cases can be selected manually.
 5. **Finish Check**, **Take Wound**, **Cheat Death**, **Harmless** resolution, or **Valiant Sacrifice** settles the transaction.
 
 Persistent bag and Wound state are not permanently changed until the Check is finalized or resolved. **Cancel Check** is a Host correction tool that aborts an unresolved Check; bag dice return conceptually, and a pending Forced Omen returns to the Host pool.
@@ -134,33 +216,38 @@ Rerolling preserves the exact die types and sources from the current Check. It g
 
 ## Export And Import
 
-Use **Export Game State** to place formatted JSON in the text area. Use **Import Game State** to restore a saved JSON state. Imported state is normalized and validated before replacing the current game.
+Use **Export Game State** to place formatted JSON in the text area. Use **Import Game State** to restore a saved JSON state. Imported state is normalized and validated before replacing the current game. Solo supports pending Check restoration. Multiplayer import is Host-only, requires no unresolved Check, and rejects any imported `currentCheck`; it cannot submit client-generated Check outcomes.
 
-## Tests
+## Verification
 
-If Node is available, run:
+Run the complete suite with `npm test`. **193 tests pass**:
 
-```bash
-node tests/rules.test.js
-node tests/state.test.js
-node tests/ui.test.js
-```
+| Suite | Passing tests |
+| --- | ---: |
+| Existing rules | 44 |
+| Existing state/migration | 28 |
+| Existing DOM interaction | 8 |
+| Pass-1 room/server regressions | 48 |
+| Pass-1 network client regressions | 11 |
+| New Pass-2 authoritative Checks | 54 |
+| Total | 193 |
 
-The Node suite includes the original core rules plus Forced Omen, Valiant Sacrifice, reroll, cancellation, Omen-economy, and randomized stress regression coverage. You can also open `tests.html` in a browser for a small browser smoke test.
+All 139 carried-forward tests pass. Transitional Pass-1 tests were updated to assert retirement of client Check snapshots and use the authoritative flow; no prior tests were removed. The 54 Pass-2 tests cover deterministic draw composition, fake outcomes, ownership, all Omen resolution paths, rerolls, Act snapshots/locks, assignment locks, reconnect before/after drawing and rolling, isolated rooms and duplicate/racing actions. Real Socket.IO integration tests exercise Host and Player clients. The original DOM suite uses a minimal adapter, while the following checks used actual browsers.
 
-The expanded suite includes 44 existing rule tests, 28 state/migration tests, and 8 DOM interaction tests. The DOM suite executes the real UI handlers with a minimal DOM adapter; it does not verify browser layout.
+Manual local verification used a Host and two independent Player browser sessions, with separate loopback origins for separate storage:
 
-### Manual verification status
+- Room creation/join, character assignment and observer-only controls worked.
+- The assigned Player confirmed Rating, drew and rolled; Host and observer displayed identical dice types, numbers and results.
+- Player refresh preserved DRAWN dice, then preserved a rolled Check awaiting Wound resolution. Host refresh also reconnected during the pending Check.
+- Cheat Death and pre-roll Valiant Sacrifice resolved on the server and preserved the Omen total of 13.
+- Player disconnect showed the waiting state; Host takeover and cancellation worked.
+- Returning to Solo and refreshing retained independent Solo mode/state.
+- Host and both Player browser consoles had no warnings or errors. Server console inspection showed no obvious exceptions or secret logging.
 
-Browser verification was attempted during this pass, but the browser security policy blocked the local file URL. No manual browser scenarios or mobile/desktop visual checks are claimed as passed. Automated coverage exercises the requested A–K behaviors, including six-character limits, independent Wounds/Strain/Cheat Death/death, Flaw sources, Act locks and snapshots, and pending state reload. Open `index.html` to finish the visual/manual pass, especially at narrow mobile widths. Host Strain correction currently uses JSON; the normal Record Strain action requires no JSON entry.
+Earlier Pass-1 manual testing also covered a Host plus three Players, shared Act/Bag updates, assignment persistence and synchronized resolution. These were local HTTP tests, not physical LAN-device or production Render tests. Desktop UI was visually inspected; narrow mobile layout was not reverified in this pass. `tests.html` remains available for a small browser rules smoke test.
 
-## Static Deployment
+## Change inventory
 
-This is a static site. To deploy through GitHub Pages:
+Across the requested multiplayer work, added files are `package.json`, `package-lock.json`, `.gitignore`, `js/socket.js`, `js/multiplayer.js`, all five files under `server/`, and `tests/multiplayer.test.js`, `tests/network-client.test.js`, `tests/checks.test.js`.
 
-1. Commit the folder to a GitHub repository.
-2. In repository settings, enable Pages.
-3. Select the branch containing `index.html`.
-4. Use the published Pages URL.
-
-Any static host such as Cloudflare Pages, Netlify, or a plain web server can serve the same files.
+Changed existing files are `index.html`, `css/styles.css`, `js/rules.js`, `js/state.js`, `js/app.js` and this README. Pass 2 adds `server/check-manager.js` and `tests/checks.test.js` to the Pass-1 foundation and updates its server, transport, UI and transition tests. The original rules/state/DOM test files remain intact.

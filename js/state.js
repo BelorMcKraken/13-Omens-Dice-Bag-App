@@ -92,7 +92,7 @@
     const check = candidate.currentCheck;
     if (check) {
       if (!Rules.ACTS.includes(check.act) || !ids.has(check.characterId)) errors.push("Invalid Check character or Act snapshot.");
-      if (![Rules.PHASE_DRAWN, Rules.PHASE_ROLLED, Rules.PHASE_AWAITING_WOUND, Rules.PHASE_RESOLVED].includes(check.phase) || !Array.isArray(check.dice) || check.dice.length < 2 || !check.configuration || !check.composition) errors.push("Invalid pending Check.");
+      if (![Rules.PHASE_REQUESTED, Rules.PHASE_DRAWN, Rules.PHASE_ROLLED, Rules.PHASE_AWAITING_WOUND, Rules.PHASE_RESOLVED].includes(check.phase) || !Array.isArray(check.dice) || (check.phase === Rules.PHASE_REQUESTED ? check.dice.length !== 0 : check.dice.length < 2) || !check.configuration || !check.composition) errors.push("Invalid pending Check.");
       else {
         if (typeof check.forcedOmenCommitted !== "boolean" || check.dice.filter((die) => die && die.source === "forced").length !== Number(check.forcedOmenCommitted)) errors.push("Invalid Forced Omen commitment.");
         if (!Number.isFinite(check.finalTn) || !["NORMAL", "EDGE", "FLAW"].includes(check.composition.resolutionMode)) errors.push("Invalid Check configuration.");
@@ -100,7 +100,7 @@
           if (!Array.isArray(roll.dice) || roll.dice.length !== check.dice.length || roll.dice.some((die, i) => !die || !integer(die.result, 6) || die.result < 1 || die.type !== check.dice[i].type || die.source !== check.dice[i].source) || !Number.isFinite(roll.total) || typeof roll.result !== "string" || !roll.wound || typeof roll.wound.triggered !== "boolean" || !Array.isArray(roll.wound.qualifyingDice) || (roll.wound.triggered && !roll.wound.selectedWoundDie)) errors.push("Invalid Check roll.");
         }
         if (check.dice.some((die) => !die || ![Rules.DIE_SAFE, Rules.DIE_OMEN].includes(die.type) || !["bag", "forced"].includes(die.source))) errors.push("Invalid Check dice.");
-        if (check.phase !== Rules.PHASE_DRAWN && !check.valiantResolved && (!check.originalRoll || !Rules.getSelectedRoll(check))) errors.push("Missing Check roll.");
+        if (check.phase !== Rules.PHASE_REQUESTED && check.phase !== Rules.PHASE_DRAWN && !check.valiantResolved && (!check.originalRoll || !Rules.getSelectedRoll(check))) errors.push("Missing Check roll.");
       }
     }
     if (!errors.length && !Rules.validateOmenEconomy(candidate)) errors.push("Omen economy must total 13 across Host, bag, all characters' Wounds, and pending Forced Omen.");

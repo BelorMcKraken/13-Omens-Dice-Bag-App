@@ -43,6 +43,10 @@
     $("soloMenu").hidden = !solo;
     $("gameInterface").hidden = !(solo || (room && host));
     $("playerView").hidden = !(active && room && !host);
+    $("multiplayerCheckPanel").hidden = !(active && room);
+    $("ratingPermission").hidden = !(active && host);
+    $("reachBag").textContent = active ? "Call for Check" : "Reach Into The Bag";
+    document.querySelector(".result-panel").hidden = active;
     guard();
     $("resumeMultiplayer").hidden = !(view?.canResume ?? savedIdentityAvailable);
     if (!active) { renderedGame = null; return; }
@@ -74,7 +78,8 @@
           option.disabled = Boolean(owner && owner.id !== entry.id); select.append(option);
         }
         select.value = entry.assignedCharacterId || "";
-        select.disabled = view.status !== "connected" || view.busy;
+        const pending = room.gameState.currentCheck;
+        select.disabled = view.status !== "connected" || view.busy || (pending && pending.phase !== "RESOLVED" && (pending.playerId === entry.id || entry.assignedCharacterId === pending.characterId));
         select.addEventListener("change", () => action(() => client.assign(entry.id, select.value || null)));
         row.append(select);
       }
@@ -97,7 +102,51 @@
       window.ThirteenOmensApp.render();
       renderedGame = version;
     }
+    renderCheck(view);
     guard();
+  }
+
+  function renderCheck(view) {
+    const Rules = window.ThirteenOmensRules;
+    const check = view.room.gameState.currentCheck;
+    const player = view.player;
+    const host = player.role === "HOST";
+    const pending = check && check.phase !== Rules.PHASE_RESOLVED;
+    const controller = check && (host ? check.hostTakeover : !check.hostTakeover && check.playerId === player.id && player.assignedCharacterId === check.characterId);
+    const ready = view.status === "connected" && !view.busy;
+    const requested = check?.phase === Rules.PHASE_REQUESTED;
+    const drawn = check?.phase === Rules.PHASE_DRAWN;
+    const rolled = Boolean(check && Rules.getSelectedRoll(check));
+    const selected = check && Rules.getSelectedRoll(check);
+    $("mpCheckResult").innerHTML = window.ThirteenOmensApp.checkMarkup(check);
+    $("mpRatingLabel").hidden = !requested;
+    $("mpRating").disabled = !ready || !controller || !check?.configuration.allowPlayerRating;
+    const buttons = {
+      mpDraw: controller && requested,
+      mpRoll: controller && drawn,
+      mpReroll: controller && pending && rolled && !check.reroll,
+      mpOriginal: controller && pending && check?.reroll && check.selectedRoll !== "original",
+      mpUseReroll: controller && pending && check?.reroll && check.selectedRoll !== "reroll",
+      mpWound: controller && check?.phase === Rules.PHASE_AWAITING_WOUND,
+      mpCheat: controller && check?.phase === Rules.PHASE_AWAITING_WOUND && Rules.canCheatDeath(view.room.gameState, check),
+      mpFinish: controller && pending && rolled && (!selected.wound.triggered || check.configuration.harmless),
+      mpValiant: controller && drawn && check.valiantAvailable,
+      mpCancel: host && pending,
+      mpTakeover: host && pending && !check.hostTakeover,
+    };
+    for (const [id, allowed] of Object.entries(buttons)) { $(id).hidden = !allowed; $(id).disabled = !ready; }
+    if (!check) {
+      for (const id of ["mpCheckOwner", "mpCheckConditions", "mpCheckTN", "mpCheckWaiting"]) $(id).textContent = "";
+      return;
+    }
+    const character = view.room.gameState.characters.find((entry) => entry.id === check.characterId);
+    const owner = view.room.players.find((entry) => entry.id === check.playerId);
+    const config = check.configuration;
+    $("mpRating").value = config.rating || "Average";
+    $("mpCheckOwner").textContent = `${character.name} — ${config.aspect} Check · Check Act: ${check.act} · Story Act: ${view.room.gameState.act}`;
+    $("mpCheckConditions").textContent = `Difficulty: ${config.difficultyModifier >= 0 ? "+" : ""}${config.difficultyModifier} · Edges: ${config.edges} · Declared Flaws: ${config.flaws} · Risky: ${config.risky ? "Yes" : "No"} · Harmless: ${config.harmless ? "Yes" : "No"} · Facing Evil: ${config.forcedOmen ? "Yes" : "No"} · Wounds Flaw: +${check.automaticFlaws?.wounds || 0} · ${config.aspect} Strain Flaw: +${check.automaticFlaws?.strain || 0} · Total Flaws: ${check.composition.totalFlaws}`;
+    $("mpCheckTN").textContent = `Base TN: ${config.baseTn} · Final TN: ${check.finalTn}${config.manualTn ? " · Host manual TN (locked)" : config.allowPlayerRating ? "" : " · Rating locked by Host"}`;
+    $("mpCheckWaiting").textContent = !pending ? "Check resolved." : check.hostTakeover ? "Host controls this Check on behalf of the character." : !owner?.connected ? "PLAYER DISCONNECTED — Waiting for reconnect. The Host can take over or cancel." : controller ? "Your Check — choose the next available action." : `Observing ${owner.displayName}'s Check. Waiting for ${requested ? "the Player to reach into the bag" : "their next action"}.`;
   }
 
   function guard() {
@@ -105,6 +154,14 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    for (const [name, tn] of Object.entries(window.ThirteenOmensRules.ASPECTS)) {
+      const option = document.createElement("option"); option.value = name; option.textContent = `${name} (TN ${tn})`; $("mpRating").append(option);
+    }
+    $("mpRating").addEventListener("change", () => action(() => client.check("check:set-rating", { rating: $("mpRating").value })));
+    const checkButtons = { mpDraw: "draw", mpRoll: "roll", mpReroll: "reroll", mpFinish: "finish", mpWound: "take-wound", mpCheat: "cheat-death", mpValiant: "valiant-sacrifice", mpCancel: "cancel", mpTakeover: "takeover" };
+    for (const [id, verb] of Object.entries(checkButtons)) $(id).addEventListener("click", () => action(() => client.check(`check:${verb}`)));
+    $("mpOriginal").addEventListener("click", () => action(() => client.check("check:select-roll", { rollName: "original" })));
+    $("mpUseReroll").addEventListener("click", () => action(() => client.check("check:select-roll", { rollName: "reroll" })));
     $("soloGame").addEventListener("click", () => { client?.leave(); solo = true; saveMode("solo"); Store.leaveMultiplayer(); window.ThirteenOmensApp.render(); render(); });
     $("backFromSolo").addEventListener("click", () => { solo = false; saveMode("menu"); render(); });
     $("createMultiplayer").addEventListener("click", () => action(async () => (await network()).create($("hostDisplayName").value.trim() || "Host")));
@@ -124,5 +181,5 @@
     render();
     if (identity && savedMode !== "solo" && savedMode !== "menu" && /^https?:$/.test(location.protocol)) action(async () => (await network()).resume());
   });
-  window.ThirteenOmensMultiplayer = { guard };
+  window.ThirteenOmensMultiplayer = { guard, callCheck: (options) => client.callCheck({ ...options, characterId: Store.getState().selectedCharacterId }) };
 })();

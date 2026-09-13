@@ -7,11 +7,11 @@
   const els = {};
 
   document.addEventListener("DOMContentLoaded", init);
-  window.ThirteenOmensApp = { render };
+  window.ThirteenOmensApp = { render, checkMarkup };
 
   function init() {
     [
-      "characterList", "addCharacter", "characterLimit", "characterName", "characterLock", "strainSummary", "checkingFor", "checkSnapshot", "manualCharacter", "manualCheatDeath", "manualStrain", "autoApplyStrainFlaw", "lockActDuringPendingCheck", "automaticSources", "totalFlaws", "aspectName",
+      "characterList", "addCharacter", "characterLimit", "characterName", "characterLock", "strainSummary", "checkingFor", "checkSnapshot", "manualCharacter", "manualCheatDeath", "manualStrain", "autoApplyStrainFlaw", "lockActDuringPendingCheck", "automaticSources", "totalFlaws", "aspectName", "allowPlayerRating",
       "actSelect",
       "actDisplay",
       "safeCount",
@@ -150,6 +150,9 @@
     const baseTn = els.manualTn.checked ? els.baseTn.value : Rules.ASPECTS[els.aspect.value];
     return {
       aspect: els.aspectName.value.trim() || els.aspect.value,
+      rating: els.aspect.value,
+      manualTn: els.manualTn.checked,
+      allowPlayerRating: els.allowPlayerRating.checked,
       baseTn,
       difficultyModifier: Number(els.difficulty.value),
       edges: Number(els.edgeCount.value),
@@ -183,6 +186,7 @@
   function drawCheck() {
     safeAction(() => {
       const state = Store.getState();
+      if (Store.getMode() === "multiplayer") return window.ThirteenOmensMultiplayer.callCheck(getCheckOptions());
       return Store.drawCheck(getCheckOptions());
     });
   }
@@ -316,56 +320,42 @@
     ).join("");
   }
 
+  function checkMarkup(check) {
+    if (!check) return '<p class="muted">No Check pending.</p>';
+    if (check.phase === Rules.PHASE_REQUESTED) return '<div class="notice calm"><strong>THE HOST CALLS FOR A CHECK.</strong> Confirm the Rating when allowed, then reach into the bag. No dice have been drawn.</div>';
+    if (check.phase === Rules.PHASE_DRAWN) return `
+      <div class="notice calm"><strong>DRAWN FROM THE BAG:</strong> dice types are known. No d6 results have been rolled.</div>
+      <div class="dice-row">${check.dice.map(dieCard).join("")}</div>
+      ${check.valiantAvailable ? '<div class="notice danger">VALIANT SACRIFICE AVAILABLE — choose before rolling.</div>' : ""}`;
+    if (check.valiantResolved) return `<div class="result-banner success"><span>VALIANT SACRIFICE</span><strong>Automatic Success</strong><small>No dice rolled</small></div><div class="dice-row">${check.dice.map(dieCard).join("")}</div>`;
+    const selected = Rules.getSelectedRoll(check);
+    if (!selected) return '<p class="muted">Waiting for the Check result.</p>';
+    const woundMessage = selected.wound.triggered
+      ? check.configuration.harmless
+        ? '<div class="notice warning"><strong>HARMLESS OMEN RESULT:</strong> no Wound. Strain occurs.</div>'
+        : `<div class="notice danger"><strong>WOUND TRIGGERED:</strong> ${selected.wound.qualifyingDice.length} qualifying Omen; ${selected.wound.selectedWoundDie.source === "forced" ? "Forced Omen" : "Bag Omen"} selected for bookkeeping. Check Act: ${escapeHtml(check.act)}.</div>`
+      : '<div class="notice calm">No Omen Wound triggered.</div>';
+    return `<div class="result-banner ${resultClass(selected.result)}"><span>${escapeHtml(selected.result)}</span><strong>Total ${selected.total}</strong><small>TN ${check.finalTn}</small></div>
+      ${rollBlock("Original Result", check.originalRoll, check.selectedRoll === "original")}
+      ${check.reroll ? rollBlock("Reroll Result", check.reroll, check.selectedRoll === "reroll") : ""}
+      <p class="muted">${phaseSummary(check)}</p>${woundMessage}
+      ${selected.riskyFailure ? '<div class="notice warning"><strong>RISKY FAILURE:</strong> Host chooses a consequence such as Strain, lost Gear, or used/broken Perk.</div>' : ""}`;
+  }
+
   function renderResult(state) {
     const check = state.currentCheck;
     resetResultButtons();
-    if (!check) {
-      els.resultPanel.innerHTML = '<p class="muted">No Check has been made yet.</p>';
-      return;
-    }
+    els.resultPanel.innerHTML = checkMarkup(check);
+    if (!check) return;
+    if (check.phase === Rules.PHASE_REQUESTED) { $("#cancelCheck").disabled = false; return; }
     if (check.phase === Rules.PHASE_DRAWN) {
-      els.resultPanel.innerHTML = `
-        <div class="notice calm"><strong>DRAWN FROM THE BAG:</strong> dice types are known. No d6 results have been rolled.</div>
-        <div class="dice-row">${check.dice.map(dieCard).join("")}</div>
-        <p class="muted">${phaseSummary(check)}</p>
-        ${check.valiantAvailable ? '<div class="notice danger"><strong>VALIANT SACRIFICE AVAILABLE:</strong> choose before rolling. No die results are visible yet.</div>' : ""}
-      `;
       $("#rollDice").disabled = false;
       $("#valiant").disabled = !check.valiantAvailable;
       $("#cancelCheck").disabled = false;
       return;
     }
-
+    if (check.valiantResolved) return;
     const selected = Rules.getSelectedRoll(check);
-    if (check.valiantResolved) {
-      els.resultPanel.innerHTML = `
-        <div class="result-banner success"><span>VALIANT SACRIFICE</span><strong>Automatic Success</strong><small>No dice rolled</small></div>
-        <div class="dice-row">${check.dice.map(dieCard).join("")}</div>
-      `;
-      return;
-    }
-    const original = rollBlock("Original Result", check.originalRoll, check.selectedRoll === "original");
-    const reroll = check.reroll ? rollBlock("Reroll Result", check.reroll, check.selectedRoll === "reroll") : "";
-    const woundMessage = selected.wound.triggered
-      ? check.configuration.harmless
-        ? '<div class="notice warning"><strong>HARMLESS OMEN RESULT:</strong> no Wound. Strain occurs.</div>'
-        : `<div class="notice danger"><strong>WOUND TRIGGERED:</strong> ${selected.wound.qualifyingDice.length} qualifying Omen; ${selected.wound.selectedWoundDie.source === "forced" ? "Forced Omen" : "Bag Omen"} selected for bookkeeping.</div>`
-      : '<div class="notice calm">No Omen Wound triggered.</div>';
-    const risky = selected.riskyFailure
-      ? '<div class="notice warning"><strong>RISKY FAILURE:</strong> choose a consequence such as Strain, lost Gear, or used/broken Perk.</div>'
-      : "";
-    els.resultPanel.innerHTML = `
-      <div class="result-banner ${resultClass(selected.result)}">
-        <span>${selected.result}</span>
-        <strong>Total ${selected.total}</strong>
-        <small>TN ${check.finalTn}</small>
-      </div>
-      ${original}
-      ${reroll}
-      <p class="muted">${phaseSummary(check)}</p>
-      ${woundMessage}
-      ${risky}
-    `;
     $("#reroll").disabled = !check.originalRoll || Boolean(check.reroll) || check.phase === Rules.PHASE_RESOLVED;
     $("#useOriginal").disabled = !check.reroll || check.selectedRoll === "original" || check.phase === Rules.PHASE_RESOLVED;
     $("#useReroll").disabled = !check.reroll || check.selectedRoll === "reroll" || check.phase === Rules.PHASE_RESOLVED;
@@ -387,7 +377,7 @@
       <section class="reroll-block ${selected ? "selected-roll" : ""}">
         <h3>${title}${selected ? " - Selected" : ""}</h3>
         <div class="dice-row">${roll.dice.map(dieCard).join("")}</div>
-        <p><strong>Total:</strong> ${roll.total} · <strong>${roll.result}</strong></p>
+        <p><strong>Total:</strong> ${roll.total} · <strong>${escapeHtml(roll.result)}</strong></p>
       </section>
     `;
   }
@@ -402,9 +392,9 @@
     const selectedWound = die.selectedWound ? '<span class="tag danger-tag">SELECTED WOUND DIE</span>' : "";
     return `
       <article class="die-card ${die.type === "OMEN" ? "omen-die" : "safe-die"}">
-        <span class="die-type">${die.type}</span>
+        <span class="die-type">${escapeHtml(die.type)}</span>
         <strong class="die-result">${hasResult ? die.result : "?"}</strong>
-        <span class="tag">${hasResult ? die.note || (die.used ? "USED" : "DISCARDED") : "NOT ROLLED"}</span>
+        <span class="tag">${escapeHtml(hasResult ? die.note || (die.used ? "USED" : "DISCARDED") : "NOT ROLLED")}</span>
         <small>${die.source === "forced" ? "FORCED / FACING EVIL" : "DRAWN FROM BAG"}</small>
         ${wound}
         ${selectedWound}
