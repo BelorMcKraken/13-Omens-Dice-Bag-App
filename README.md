@@ -39,17 +39,13 @@ For a LAN game, connect devices to the same network, find the server computer's 
 | `tests/*.test.js`, `tests.html` | Automated regressions and browser smoke tests |
 | `package.json`, `package-lock.json`, `.gitignore` | Runtime dependencies, scripts and generated-file exclusions |
 
-## Multiplayer Pass 2
+## Multiplayer Pass 3 (complete)
 
-1. Choose **Create Room**, enter the Host name, and share the room code. Players choose **Join Room** and enter their names and code.
-2. The Host manages the 1–6 character roster and assigns characters to connected Player identities. Disconnected Players retain their assignments and seats. A Host can also hold an assignment.
-3. The Host selects a character, Aspect, Rating or manual TN, Difficulty, Edges, Flaws, Risky, Harmless and Forced Omen, then selects **Call for Check**.
-4. The assigned Player receives the request. If the Host permits Rating confirmation, the Player can select a known Rating before drawing. Manual TN and all other Host conditions remain locked.
-5. The Player selects **Reach Into the Bag**. The server draws without replacement, commits any Forced Omen, and broadcasts dice types and sources without numbers.
-6. The Player selects **Roll Dice**, or eligible **Valiant Sacrifice** before rolling. The server generates results and everyone sees the same outcome.
-7. The Player can use the existing one-reroll utility, select original/reroll, finish, take a Wound or use Cheat Death when eligible. Harmless Strain and all Omen transfers are resolved on the server.
+Host and Players share character sheets with five fixed Core Aspects and five stable Story slots. Host edits names, Ratings, Archetype, Description, Notes, Gear and Perks; Players read the same data. Story renames preserve IDs and Strain. Normal Checks send characterId and aspectId; the server snapshots name, Rating, base TN, difficulty and final TN. Players no longer confirm Ratings. Manual TN remains a Host option.
 
-There is **one unresolved Check per room**. Other Players observe with no action buttons. The Host sees the same progression and can **Cancel Check** or explicitly **Take Over Check**. Takeover keeps control with the Host until resolution/cancellation, including after the Player reconnects. Checks for unassigned or Host-assigned characters start under Host control. Host actions on behalf of a character are logged.
+Strain buttons act directly on Aspect IDs. Auto-apply Strain Flaw is optional. Fixed story size determines death at 6/5/4/4/3/2 Wounds for 1–6 characters. Six-character stories change to threshold 3 after two distinct characters perish. Three-character stories grant each character one Strain removal per story. Set story size before play; adding/removing roster entries does not silently change it.
+
+The assigned Player draws, rolls and resolves; other Players observe. Host can take over or cancel. Check data, character sheets and assignments survive reconnect. The inline SVG skull favicon requires no image asset.
 
 ### State authority and permissions
 
@@ -57,7 +53,7 @@ Multiplayer clients send intents, never authoritative dice or outcomes. Producti
 
 The server validates authenticated room identity, role, current assignment, Check ownership, active character, phase, allowed payload fields, version, eligibility and the 13-Omen invariant. Only the Host calls Checks or changes management settings. Players can control only their assigned pending Check. The pending owner/character assignment is locked. Manual corrections, imports and reset are blocked while a Check is unresolved; multiplayer imports cannot inject Check records/results. The Host remains a trusted game administrator with validated correction tools outside a pending Check.
 
-The existing schema remains version `3`; multiplayer adds the `AWAITING_PLAYER` phase and Check ownership/configuration metadata to `currentCheck`. The Check snapshots the Act **when the Host calls it**. Solo continues to snapshot on drawing. Changing the story Act with locking disabled never changes the pending Check's Act.
+The current schema is version `4`; multiplayer adds the `AWAITING_PLAYER` phase and Check ownership/configuration metadata to `currentCheck`. The Check snapshots the Act **when the Host calls it**. Solo continues to snapshot on drawing. Changing the story Act with locking disabled never changes the pending Check's Act.
 
 ### Reconnect and duplicate actions
 
@@ -78,13 +74,13 @@ Successful acknowledgements use `{ ok: true, room?, session? }`; errors use `{ o
 | `player:assign-character` | Host assignment management |
 | `game:action` | Host-only allowlisted game management with validated action arguments and version |
 | `check:create` | Host; `{ configuration, baseVersion }` |
-| `check:set-rating` | Check controller, only when permitted and before draw; `{ checkId, baseVersion, rating }` |
+| `check:set-rating` | Retired compatibility endpoint; normal Ratings are locked |
 | `check:draw`, `check:roll`, `check:reroll` | Check controller; `{ checkId, baseVersion }` |
 | `check:select-roll` | Check controller; `{ checkId, baseVersion, rollName }` |
 | `check:take-wound`, `check:cheat-death`, `check:valiant-sacrifice`, `check:finish` | Eligible Check controller; `{ checkId, baseVersion }` |
 | `check:cancel`, `check:takeover` | Host; `{ checkId, baseVersion }` |
 
-`configuration` contains `characterId`, `aspect`, `rating`, `manualTn`, `baseTn`, `allowPlayerRating`, `difficultyModifier`, `edges`, `flaws`, `risky`, `harmless` and `forcedOmen`. Ratings must be known; manual TN is Host-only. Automatic Flaws are calculated from server character state.
+`configuration` contains `characterId`, `aspectId`, `manualTn`, `difficultyModifier`, `edges`, `flaws`, `risky`, `harmless`, `forcedOmen`. Only manual Checks accept `aspect` and `baseTn`. Normal Checks reject client Rating/TN fields.
 
 The Pass-1 `game:check-state` endpoint is retired and rejects snapshots, including Host snapshots. `check:set-dice`, `check:set-result`, `check:set-total`, `check:set-wounds` and `check:replace-pending-check` explicitly reject outcomes. Extra payload fields such as supplied dice, totals or eligibility are rejected.
 
@@ -92,7 +88,7 @@ The Pass-1 `game:check-state` endpoint is retired and rejects snapshots, includi
 
 The existing Node/Express/Socket.IO setup remains compatible with `npm ci`, `npm start`, `process.env.PORT` and `0.0.0.0`. To update an existing Render deployment, push the changed project files to the same linked GitHub branch if auto-deploy is enabled; see [Render's deployment documentation](https://render.com/docs/deploys). No Render configuration or deployment was performed in this pass.
 
-Rooms exist only in one server process's memory. Server restart/redeploy loses rooms and reconnect targets; this is not permanent persistence or a multi-worker deployment. No accounts, database, chat, matchmaking, external integrations or infrastructure were added. Disconnected seats remain reserved; Host eviction and lost-token recovery are not implemented. Ratings are confirmed by Players because complete character Aspect sheets are not stored. Static-only hosting supports Solo, not multiplayer.
+Rooms exist only in one server process's memory. Server restart/redeploy loses rooms and reconnect targets; this is not permanent persistence or a multi-worker deployment. No accounts, database, chat, matchmaking, external integrations or infrastructure were added. Disconnected seats remain reserved; Host eviction and lost-token recovery are not implemented. Character sheets store all ten Aspects. Static-only hosting supports Solo, not multiplayer.
 
 A sensible next phase is durable room recovery across server restarts, followed by explicit seat/token recovery and usability improvements. Those are recommendations, outside this pass.
 
@@ -100,7 +96,7 @@ A sensible next phase is durable room recovery across server restarts, followed 
 
 In Solo mode, the app stores game state in `localStorage`, including the current Act, bag composition, Host Omens, character Wounds, character status, Cheat Death use, Strain, current pending Check, and the history log. Refreshing the browser should not erase the game, even if dice have been drawn but not rolled or a Wound is awaiting resolution.
 
-The current state schema is version `3`. The existing localStorage key is retained. Valid older single-character saves and JSON imports migrate to `characters: [...]` and `selectedCharacterId`; the original character keeps their Wounds, Strain, status, and Cheat Death use and receives a persistent unique ID. Older phased Checks receive the migrated character ID and saved story Act when those snapshots are missing. Version 1 one-step Check data without phase information is discarded while persistent game state is retained. Migration is saved immediately on successful load so IDs survive refresh.
+The current state schema is version `4`. The existing localStorage key is retained. Valid older single-character saves and JSON imports migrate to `characters: [...]` and `selectedCharacterId`; the original character keeps their Wounds, Strain, status, and Cheat Death use and receives a persistent unique ID. Older phased Checks receive the migrated character ID and saved story Act when those snapshots are missing. Version 1 one-step Check data without phase information is discarded while persistent game state is retained. Migration is saved immediately on successful load so IDs survive refresh.
 
 Malformed imports are rejected before replacing the game, including invalid counts, IDs, selection, Wounds, status, Strain, pending Checks, and Omen totals. Invalid stored saves fall back to a fresh game and emit a console warning; the original stored value is not overwritten during that failed load.
 
@@ -176,7 +172,7 @@ Every Omen Die rolled is checked for Wounds, even if it was discarded by an Edge
 - Act 3: Omen result `1-3`
 - Prologue: no automatic Omen Wound threshold
 
-Only one Wound can be received from a single Check. When **Take Wound** is selected, one qualifying Omen is removed from the bag/game draw cycle and placed in front of the character. At four Wounds, only that character succumbs to death/despair, the Wound Omens return to the bag, Wounds reset to `0`, and the character is marked inactive.
+Only one Wound can be received from a single Check. When **Take Wound** is selected, one qualifying Omen is removed from the bag/game draw cycle and placed in front of the character. At the story-size death threshold described above, only that character succumbs to death/despair, the Wound Omens return to the bag, Wounds reset to `0`, and the character is marked inactive.
 
 ## Cheat Death
 
@@ -251,3 +247,7 @@ Earlier Pass-1 manual testing also covered a Host plus three Players, shared Act
 Across the requested multiplayer work, added files are `package.json`, `package-lock.json`, `.gitignore`, `js/socket.js`, `js/multiplayer.js`, all five files under `server/`, and `tests/multiplayer.test.js`, `tests/network-client.test.js`, `tests/checks.test.js`.
 
 Changed existing files are `index.html`, `css/styles.css`, `js/rules.js`, `js/state.js`, `js/app.js` and this README. Pass 2 adds `server/check-manager.js` and `tests/checks.test.js` to the Pass-1 foundation and updates its server, transport, UI and transition tests. The original rules/state/DOM test files remain intact.
+
+### Pass 3 verification (2026-09-13)
+
+All 200 tests pass, including seven dedicated sheet/migration/group-size/TN/favicon tests. Updated obsolete Check and state tests; fixed legacy named-Strain lookup when using Aspect IDs. Browser verification covered Host edits, matching read-only Player sheets, Good Courage + Hard = TN 6, Player draw/roll and reconnect with unchanged drawn dice. Broader Pass 4 verification follows below.

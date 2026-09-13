@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E💀%3C/text%3E%3C/svg%3E">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>13 Omens - Virtual Dice Bag</title>
@@ -51,7 +52,7 @@
       <details><summary>Room session log</summary><ol id="roomActivity" class="history-list"></ol></details>
     </section>
     <section id="playerView" class="panel multiplayer-panel" aria-labelledby="player-heading" hidden>
-      <h2 id="player-heading">Your place at the table</h2>
+      <h2 id="player-heading">My Character</h2><div id="playerSheet"></div>
       <p id="playerGameSummary" aria-live="polite"></p>
       <h3 id="playerCharacterName"></h3><p id="playerCharacterStatus"></p><p id="playerStrain"></p>
       <p id="playerCheck" class="notice calm" aria-live="polite"></p>
@@ -60,13 +61,13 @@
       <h2 id="mp-check-heading">Shared Check</h2>
       <p id="mpCheckOwner" class="notice calm" aria-live="polite"></p>
       <p id="mpCheckConditions"></p><p id="mpCheckWaiting" role="status"></p>
-      <label id="mpRatingLabel">Confirm Rating <select id="mpRating"></select></label>
       <p id="mpCheckTN"></p>
+      <div id="mpPerks"></div>
       <div id="mpCheckResult" aria-live="polite"></div>
       <div class="resolution-bar">
         <button id="mpDraw" type="button" hidden>Reach Into The Bag</button>
         <button id="mpRoll" type="button" hidden>Roll Dice</button>
-        <button id="mpReroll" type="button" hidden>Reroll Same Dice</button>
+        <button id="mpReroll" type="button" hidden>Host Debug Reroll</button>
         <button id="mpOriginal" type="button" hidden>Use Original</button>
         <button id="mpUseReroll" type="button" hidden>Use Reroll</button>
         <button id="mpFinish" type="button" hidden>Finish Check</button>
@@ -116,13 +117,13 @@
       </section>
 
       <section class="panel character-panel" aria-labelledby="character-heading">
-        <h2 id="character-heading">Characters</h2>
+        <h2 id="character-heading">Characters</h2><label>Story character count (set before play)<select id="storyCharacterCount"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label><button id="saveStoryCount" type="button">Set Story Size</button><p id="storyRuleSummary" class="muted"></p>
         <div id="characterList" class="character-list"></div>
         <button id="addCharacter" type="button">+ Add Character</button>
         <p id="characterLimit" class="muted"></p>
         <label>Selected character name <input id="characterName" type="text" maxlength="120" /></label>
         <div class="button-pair"><button id="renameCharacter" type="button">Rename</button><button id="removeCharacter" type="button">Remove Character</button></div>
-        <p id="characterLock" class="muted"></p>
+        <p id="characterLock" class="muted"></p><div id="hostSheet"></div>
         <p>Strain: <span id="strainSummary">None</span></p>
         <div class="wounds-line">
           <span>Wounds</span>
@@ -140,12 +141,11 @@
       <section class="panel check-panel" aria-labelledby="check-heading">
         <h2 id="check-heading">Make A Check</h2>
         <p id="checkingFor" class="notice calm" aria-live="polite"></p>
-        <label id="ratingPermission" hidden><input id="allowPlayerRating" type="checkbox" checked /> Allow Player to confirm Rating (manual TN stays Host-controlled)</label>
-        <label>Aspect name (optional, e.g. Courage) <input id="aspectName" type="text" /></label>
+        <label>Aspect<select id="storedAspect"></select></label><p id="storedRating" class="notice calm"></p><label hidden>Aspect name (optional, e.g. Courage) <input id="aspectName" type="text" /></label>
         <div class="form-grid">
-          <label>
+          <label hidden>
             Aspect
-            <select id="aspect"></select>
+            <select id="aspect" hidden></select>
           </label>
           <label class="checkbox-line">
             <input id="manualTn" type="checkbox" />
@@ -194,10 +194,11 @@
         <button id="reachBag" class="primary-button" type="button">Reach Into The Bag</button>
       </section>
 
+      <div id="soloPerks" class="panel"></div>
       <section class="panel result-panel" aria-labelledby="result-heading">
         <div class="panel-heading">
           <h2 id="result-heading">Result</h2>
-          <button id="reroll" class="ghost-button" type="button" disabled>Reroll Same Dice</button>
+          <button id="reroll" class="ghost-button" type="button" disabled>Manual / Debug Reroll</button>
         </div>
         <p id="checkSnapshot" class="notice calm" hidden></p>
         <div id="resultPanel" aria-live="polite"></div>
@@ -228,7 +229,7 @@
           <label>Host Omens <input id="manualHost" type="number" min="0" max="13" /></label>
           <label><input id="manualCheatDeath" type="checkbox" /> Cheat Death used</label>
           <label>Strain by Aspect (JSON, e.g. {"Courage":1}) <textarea id="manualStrain" rows="3"></textarea></label>
-          <label>Character Wounds <input id="manualWounds" type="number" min="0" max="4" /></label>
+          <label>Character Wounds <input id="manualWounds" type="number" min="0" max="6" /></label>
           <label>Act <select id="manualAct"></select></label>
           <label>Status
             <select id="manualStatus">
@@ -259,9 +260,12 @@
     </main>
     </fieldset>
 
-    <script src="js/rules.js"></script>
+    <script src="js/perks.js"></script>
+  <script src="js/rules.js"></script>
     <script src="js/state.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/character-sheet.js"></script>
+  <script src="js/perk-ui.js"></script>
+  <script src="js/app.js"></script>
     <script src="js/socket.js"></script>
     <script src="js/multiplayer.js"></script>
   </body>

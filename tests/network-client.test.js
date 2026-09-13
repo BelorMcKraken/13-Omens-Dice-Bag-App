@@ -52,7 +52,7 @@ test("Player store rejects Host mutations even before server validation", async 
 test("Client Check APIs send actions to authoritative server", async t => {
   const f=await fixture(t); await f.host.store.setAct("Act 1");
   await f.host.network.assign(f.bob.network.view().player.id, f.host.store.getState().selectedCharacterId);
-  await f.host.network.callCheck({characterId:f.host.store.getState().selectedCharacterId,aspect:"Courage",rating:"Average",manualTn:false,allowPlayerRating:true,edges:0,flaws:0,difficultyModifier:0,risky:false,harmless:false,forcedOmen:true});
+  await f.host.network.callCheck({characterId:f.host.store.getState().selectedCharacterId,aspectId:"courage",manualTn:false,edges:0,flaws:0,difficultyModifier:0,risky:false,harmless:false,forcedOmen:true});
   // Synchronize the receiving client through the actual room broadcast.
   if (!f.bob.store.getState().currentCheck) await once(f.bob.changes,"view");
   await f.bob.store.drawCheck();

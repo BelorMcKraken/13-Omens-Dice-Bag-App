@@ -10,6 +10,10 @@ const hash = (token) => createHash("sha256").update(token).digest();
 
 // Explicit management operations; Check intents are handled separately.
 const MANAGEMENT = {
+  editCharacter: args => args.length === 2 && Boolean(text(args[0], "Character ID")) && Boolean(args[1]) && typeof args[1] === "object",
+  setStrain: args => args.length === 3 && Boolean(text(args[0], "Character ID")) && Boolean(text(args[1], "Aspect ID")) && typeof args[2] === "boolean",
+  useStrainRelief: args => args.length === 2 && Boolean(text(args[0], "Character ID")) && Boolean(text(args[1], "Aspect ID")),
+  setStoryCharacterCount: args => args.length === 1 && Number.isInteger(args[0]) && args[0] >= 1 && args[0] <= 6,
   setAct: (args) => args.length === 1 && ["Prologue", "Act 1", "Act 2", "Act 3"].includes(args[0]),
   addOmenToBag: (args) => args.length === 0,
   removeOmenFromBag: (args) => args.length === 0,
@@ -28,7 +32,7 @@ const MANAGEMENT = {
     const values = args[0];
     object(values, ["characterId", "safe", "omen", "host", "wounds", "active", "act", "strain", "cheatDeathUsed"]);
     text(values.characterId, "Character ID");
-    for (const [key, max] of [["safe", 99], ["omen", 13], ["host", 13], ["wounds", 4]]) number(values[key], max);
+    for (const [key, max] of [["safe", 99], ["omen", 13], ["host", 13], ["wounds", 6]]) number(values[key], max);
     return [true, false, "true", "false"].includes(values.active) && ["Prologue", "Act 1", "Act 2", "Act 3"].includes(values.act) && typeof values.cheatDeathUsed === "boolean";
   },
 };

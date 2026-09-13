@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
-    "test": "node tests/rules.test.js && node tests/state.test.js && node tests/ui.test.js && node tests/multiplayer.test.js && node tests/network-client.test.js && node tests/checks.test.js"
+    "test": "node tests/rules.test.js && node tests/state.test.js && node tests/ui.test.js && node tests/multiplayer.test.js && node tests/network-client.test.js && node tests/checks.test.js && node tests/pass3.test.js && node tests/perks.test.js"
   },
   "engines": {
     "node": ">=22"

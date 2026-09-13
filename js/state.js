@@ -14,17 +14,17 @@
   options = options || {};
 
   const STORAGE_KEY = "thirteen-omens-dice-bag-state-v1";
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 5;
 
   function newCharacter(name = "Character 1") {
     return { id: globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `char-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name, wounds: 0, active: true, cheatDeathUsed: false, safeDiceLost: 0, strain: {}, statusMessage: "" };
+      name, archetype: "", description: "", notes: "", aspects: Rules.defaultAspects(), perkUsage: {}, perks: [], gear: [], strainReliefUsed: false, wounds: 0, active: true, cheatDeathUsed: false, safeDiceLost: 0, strain: {}, statusMessage: "" };
   }
 
   function defaultState() {
     const character = newCharacter();
     return { schemaVersion: SCHEMA_VERSION, version: SCHEMA_VERSION, act: "Prologue",
-      bag: { safe: 8, omen: 0 }, hostOmens: 13, characters: [character], selectedCharacterId: character.id,
+      sceneNumber: 1, storyCharacterCount: 1, perishedCharacterIds: [], bag: { safe: 8, omen: 0 }, hostOmens: 13, characters: [character], selectedCharacterId: character.id,
       settings: { autoApplyStrainFlaw: false, lockActDuringPendingCheck: true }, currentCheck: null,
       history: [{ time: new Date().toISOString(), text: "Game Started" }] };
   }
@@ -60,6 +60,24 @@
       next.currentCheck.act ??= next.act;
       next.currentCheck.characterName ??= next.characters[0].name;
     }
+    if ((input.schemaVersion || input.version || 1) < 4) {
+      next.storyCharacterCount ??= next.characters.length;
+      next.perishedCharacterIds ??= next.characters.filter(c => !c.active).map(c => c.id);
+      for (const c of next.characters) {
+        c.archetype ??= ""; c.description ??= ""; c.notes ??= "";
+        c.gear ??= []; c.perks ??= []; c.strainReliefUsed ??= false;
+        c.aspects ??= Rules.defaultAspects();
+        // Preserve unmatched legacy Strain as named story slots when possible,
+        // and keep overflow keys in the compatibility map rather than lose data.
+        const unknown = Object.keys(c.strain || {}).filter(key => !Rules.findAspect(c, key));
+        unknown.slice(0, 5).forEach((key, i) => { c.aspects[5 + i].name = key; });
+        for (const a of c.aspects) { a.strained = Boolean(c.strain?.[a.id] || c.strain?.[a.name]); if (a.name !== a.id) delete c.strain[a.name]; c.strain[a.id] = Number(a.strained); }
+      }
+    }
+    if ((input.schemaVersion || input.version || 1) < 5) {
+      next.sceneNumber ??= 1;
+      for (const c of next.characters) { c.perkUsage ??= {}; c.perks = c.perks.map(p=>({...p,ruleKey:Rules.Perks.PERK_RULES[p.ruleKey]?p.ruleKey:null,disabled:Boolean(p.disabled)})); }
+    }
     next.currentCheck ??= null;
     next.schemaVersion = next.version = SCHEMA_VERSION;
     const errors = validateState(next);
@@ -76,6 +94,7 @@
     const integer = (value, max) => Number.isInteger(value) && value >= 0 && value <= max;
     if (!Rules.ACTS.includes(candidate.act)) errors.push("Invalid act.");
     if (!candidate.bag || !integer(candidate.bag.safe, 99) || !integer(candidate.bag.omen, 13) || !integer(candidate.hostOmens, 13)) errors.push("Invalid dice counts.");
+    if (!Number.isSafeInteger(candidate.sceneNumber) || candidate.sceneNumber < 1) errors.push("Invalid scene.");
     const characters = candidate.characters;
     if (!Array.isArray(characters) || characters.length < 1 || characters.length > 6) return [...errors, "Must have 1–6 characters."];
     const ids = new Set();
@@ -83,8 +102,16 @@
       if (!character || typeof character.id !== "string" || !character.id.trim() || ids.has(character.id)) { errors.push("Invalid or duplicate character ID."); continue; }
       ids.add(character.id);
       if (typeof character.name !== "string" || !character.name.trim()) errors.push("Character names cannot be blank.");
-      if (!integer(character.wounds, 4) || typeof character.active !== "boolean" || typeof character.cheatDeathUsed !== "boolean" || !integer(character.safeDiceLost, 99)) errors.push("Invalid character Wounds or status.");
+      if (!integer(character.wounds, 6) || typeof character.active !== "boolean" || typeof character.cheatDeathUsed !== "boolean" || !integer(character.safeDiceLost, 99)) errors.push("Invalid character Wounds or status.");
       if (!character.strain || typeof character.strain !== "object" || Array.isArray(character.strain) || Object.entries(character.strain).some(([key, value]) => !key.trim() || !(typeof value === "boolean" || integer(value, Number.MAX_SAFE_INTEGER)))) errors.push("Invalid character Strain.");
+    }
+    if (!Number.isInteger(candidate.storyCharacterCount) || candidate.storyCharacterCount < 1 || candidate.storyCharacterCount > 6 || !Array.isArray(candidate.perishedCharacterIds) || candidate.perishedCharacterIds.some(id => typeof id !== "string") || new Set(candidate.perishedCharacterIds).size !== candidate.perishedCharacterIds.length) errors.push("Invalid story group rules.");
+    for (const c of characters) {
+      if (!c.perkUsage || typeof c.perkUsage !== 'object' || Array.isArray(c.perkUsage) || Object.values(c.perkUsage).some(u=>!u || typeof u.storyUsed!=='boolean' || !Array.isArray(u.actsUsed) || u.actsUsed.some(a=>!Rules.ACTS.includes(a)) || !Array.isArray(u.scenesUsed) || u.scenesUsed.some(n=>!Number.isSafeInteger(n)||n<1))) errors.push("Invalid Perk usage.");
+      if (c.perks?.some(p=>p.ruleKey!=null&&!Object.hasOwn(Rules.Perks.PERK_RULES,p.ruleKey) || p.disabled!==undefined&&typeof p.disabled!=='boolean')) errors.push("Invalid Perk rule.");
+      if (["archetype", "description", "notes"].some(k => typeof c[k] !== "string" || c[k].length > 4000) || typeof c.strainReliefUsed !== "boolean") errors.push("Invalid character sheet.");
+      if (!Array.isArray(c.aspects) || c.aspects.length !== 10 || c.aspects.some((a, i) => !a || a.id !== (i < 5 ? Rules.CORE_NAMES[i].toLowerCase() : `story-${i - 4}`) || a.type !== (i < 5 ? "core" : "story") || (i < 5 && a.name !== Rules.CORE_NAMES[i]) || typeof a.name !== "string" || !a.name.trim() || a.name.length > 120 || !Object.hasOwn(Rules.ASPECTS, a.rating) || typeof a.strained !== "boolean")) errors.push("Invalid Aspects: five Core and five Story slots required.");
+      for (const key of ["gear", "perks"]) if (!Array.isArray(c[key]) || c[key].length > 50 || new Set(c[key].map(e => e?.id)).size !== c[key].length || c[key].some(e => !e || typeof e.id !== "string" || !e.id || typeof e.name !== "string" || !e.name.trim() || e.name.length > 120 || typeof e.notes !== "string" || e.notes.length > 4000)) errors.push("Invalid Gear/Perks.");
     }
     if (!ids.has(candidate.selectedCharacterId)) errors.push("Invalid selected character ID.");
     if (!candidate.settings || typeof candidate.settings.autoApplyStrainFlaw !== "boolean" || typeof candidate.settings.lockActDuringPendingCheck !== "boolean") errors.push("Invalid Host settings.");
@@ -204,10 +231,15 @@
       draft.hostOmens = sanitizeInteger(values.host, 0, 13);
       const character = draft.characters.find((entry) => entry.id === (values.characterId || draft.selectedCharacterId));
       if (!character) throw new Error("Unknown character.");
-      character.wounds = sanitizeInteger(values.wounds, 0, 4);
+      character.wounds = sanitizeInteger(values.wounds, 0, 6);
       character.active = values.active === "true" || values.active === true;
       draft.act = Rules.ACTS.includes(values.act) ? values.act : draft.act;
-      if (values.strain !== undefined) character.strain = values.strain;
+      if (values.strain !== undefined) {
+        character.strain = values.strain;
+        for (const a of character.aspects) a.strained = Boolean(values.strain[a.id] || values.strain[a.name]);
+      }
+      if (character.active && character.wounds >= Rules.getDeathThreshold(draft, character)) { draft.bag.omen += character.wounds; character.wounds = 0; Rules.markPerished(draft, character); }
+      else if (!character.active) Rules.markPerished(draft, character);
       if (values.cheatDeathUsed !== undefined) character.cheatDeathUsed = values.cheatDeathUsed;
     }, (draft) => `${draft.characters.find((entry) => entry.id === (values.characterId || draft.selectedCharacterId)).name} — Host tools adjusted game state`);
   }
@@ -262,6 +294,7 @@
     const name = state.currentCheck ? Rules.getCharacter(state, state.currentCheck).name : "Character";
     return commit((draft) => {
       if (!hasUnresolvedCheck(draft)) throw new Error("No pending Check is available to cancel.");
+      Rules.Perks.refunds(draft, draft.currentCheck);
       if (draft.currentCheck.forcedOmenCommitted) draft.hostOmens += 1;
       draft.currentCheck = null;
     }, `${name} — Pending Check canceled; temporary dice restored`);
@@ -313,7 +346,7 @@
     return commit((draft) => {
       blockIfPending(draft);
       const key = aspect || "Unassigned";
-      Rules.getCharacter(draft).strain[key] = (Rules.getCharacter(draft).strain[key] || 0) + 1;
+      Rules.setAspectStrain(Rules.getCharacter(draft), key, 1);
     }, (draft) => `${Rules.getCharacter(draft).name} — Strain recorded: ${aspect || "Unassigned"}`);
   }
 
@@ -362,6 +395,101 @@
     }, `${name} removed; their Wound Omens returned to the bag`);
   }
 
+  function advanceScene() {
+    return commit(draft=>{blockIfPending(draft);draft.sceneNumber+=1;},draft=>'Scene '+draft.sceneNumber+' began.');
+  }
+  function setPerkDisabled(id, perkId, disabled) {
+    return commit(draft=>{blockIfPending(draft);const p=draft.characters.find(c=>c.id===id)?.perks.find(p=>p.id===perkId);if(!p||typeof disabled!=='boolean')throw new Error('Unknown Perk.');p.disabled=disabled;},draft=>{const c=draft.characters.find(c=>c.id===id);return 'Host '+(disabled?'disabled ':'restored ')+c.name+"'s "+c.perks.find(p=>p.id===perkId).name+' Perk.';});
+  }
+  function activatePerk(id, perkId, aspectId, rng) {
+    return commit(draft=>{
+      const c=draft.characters.find(c=>c.id===id),p=c?.perks.find(p=>p.id===perkId),check=hasUnresolvedCheck(draft)?draft.currentCheck:null;
+      if(!p||!Rules.Perks.eligible(c,p,draft,check))throw new Error('Perk is unavailable for this character, Aspect, usage or phase.');
+      const rule=Rules.Perks.PERK_RULES[p.ruleKey];
+      if(rule.type==='strain') {Rules.removeStrain(c,aspectId);Rules.Perks.markPerkUsed(c,p,draft);return;}
+      const activation={characterId:id,perkId,ruleKey:p.ruleKey,name:rule.name,previousUsage:c.perkUsage[p.ruleKey]?JSON.parse(JSON.stringify(c.perkUsage[p.ruleKey])):null};
+      if(rule.type==='reroll') {
+        draft.currentCheck=Rules.rerollPendingCheck(check,check.act,rng);
+        draft.currentCheck.perkReroll=true;
+        Rules.Perks.markPerkUsed(c,p,draft,check);
+        draft.currentCheck.perkActivations=[...(check.perkActivations||[]),activation];return;
+      }
+      if(rule.type==='lucky') {
+        const luck=Rules.getAspect(c,'luck');
+        check.originalAspectId??=check.configuration.aspectId;check.originalAspectName??=check.configuration.aspect;
+        check.effectiveAspectId='luck';Object.assign(check.configuration,{aspectId:'luck',aspect:luck.name,rating:luck.rating,baseTn:Rules.ASPECTS[luck.rating]});
+        check.finalTn=Rules.determineFinalTN(check.configuration.baseTn,check.configuration.difficultyModifier);
+        check.automaticFlaws=Rules.automaticFlawSources(draft,'luck',check);
+      }
+      if(['edge','bossy'].includes(rule.type))activation.edge=1;
+      if(['cancel','aid'].includes(rule.type))activation.cancel=1;
+      if(['keep','bossy'].includes(rule.type))activation.keep=true;
+      check.perkActivations=[...(check.perkActivations||[]),activation];
+      const previousCount=check.composition.totalPhysicalDice;
+      Rules.refreshCheckModifiers(draft,check);
+      if(check.phase===Rules.PHASE_DRAWN) {
+        const returned=previousCount-check.composition.totalPhysicalDice;
+        if(returned<0)throw new Error('Activate this Perk before drawing.');
+        for(let i=0;i<returned;i++){
+          let index=check.dice.findIndex(d=>d.source==='bag'&&d.type===Rules.DIE_SAFE);
+          if(index<0)index=check.dice.findIndex(d=>d.source==='bag');
+          if(index<0)throw new Error('No eligible die to return.');
+          check.returnedDice=[...(check.returnedDice||[]),...check.dice.splice(index,1)];
+        }
+        const owner=Rules.getCharacter(draft,check);
+        check.valiantAvailable=owner.active&&owner.wounds>=3&&check.dice.some(d=>d.type===Rules.DIE_OMEN);
+      }
+      Rules.Perks.markPerkUsed(c,p,draft,check);
+    },draft=>{const c=draft.characters.find(c=>c.id===id),p=c.perks.find(p=>p.id===perkId);return c.name+' used '+p.name+' in '+(draft.currentCheck?.act||draft.act)+(aspectId?' and removed '+Rules.getAspect(c,aspectId).name+' Strain':'')+'.';});
+  }
+
+  function editCharacter(id, patch) {
+    return commit(draft => {
+      const c = draft.characters.find(c => c.id === id);
+      if (!c || !patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("Invalid character edit.");
+      const allowed = ["name", "archetype", "description", "notes", "aspects", "gear", "perks"];
+      if (Object.keys(patch).some(k => !allowed.includes(k))) throw new Error("Unknown character field.");
+      // Full committed sheet edits, never arbitrary mechanics or identity replacement.
+      if (patch.aspects) {
+        if (!Array.isArray(patch.aspects)) throw new Error("Invalid Aspects.");
+        if (hasUnresolvedCheck(draft) && patch.aspects.some((a, i) => a.strained !== c.aspects[i]?.strained)) throw new Error("Resolve the pending Check before changing Strain.");
+      }
+      if (patch.perks) {
+        blockIfPending(draft);
+        if (!Array.isArray(patch.perks) || patch.perks.some(p=>Object.keys(p).some(k=>!['id','name','notes','ruleKey','disabled'].includes(k)))) throw new Error("Invalid Perk edit.");
+        patch = {...patch, perks:patch.perks.map(p=>({...p,ruleKey:p.ruleKey||null,disabled:Boolean(p.disabled)}))};
+      }
+      Object.assign(c, JSON.parse(JSON.stringify(patch)));
+      if (typeof c.name === "string") c.name = c.name.trim();
+      for (const a of c.aspects) { delete c.strain[a.name]; c.strain[a.id] = Number(a.strained); }
+    }, draft => `${draft.characters.find(c => c.id === id).name} — Host saved character sheet (${Object.keys(patch).join(", ")})`);
+  }
+  function setStrain(id, aspectId, strained) {
+    return commit(draft => {
+      blockIfPending(draft);
+      const c = draft.characters.find(c => c.id === id), a = c && Rules.getAspect(c, aspectId);
+      if (!a || typeof strained !== "boolean") throw new Error("Invalid Aspect Strain.");
+      Rules.setAspectStrain(c, aspectId, strained);
+    }, draft => `${draft.characters.find(c => c.id === id).name} — ${strained ? "Added" : "Removed"} Strain: ${Rules.getAspect(draft.characters.find(c => c.id === id), aspectId).name}`);
+  }
+  function useStrainRelief(id, aspectId) {
+    return commit(draft => {
+      blockIfPending(draft);
+      const c = draft.characters.find(c => c.id === id), a = c && Rules.getAspect(c, aspectId);
+      if (draft.storyCharacterCount !== 3 || !c?.active || c.strainReliefUsed || !a?.strained) throw new Error("Small-group Strain Relief is not available.");
+      Rules.removeStrain(c, aspectId); c.strainReliefUsed = true;
+    }, "Used once-per-story three-character Strain Relief");
+  }
+  function setStoryCharacterCount(count) {
+    return commit(draft => {
+      blockIfPending(draft);
+      if (!Number.isInteger(count) || count < 1 || count > 6) throw new Error("Story size must be 1–6.");
+      // Explicit correction; never silently kill or revive on group configuration.
+      if (draft.characters.some(c => c.active && c.wounds >= Rules.getDeathThreshold({ ...draft, storyCharacterCount: count }, c))) throw new Error("Correct Wounds before lowering the death threshold.");
+      draft.storyCharacterCount = count;
+    }, `Story character count set to ${count}`);
+  }
+
   function formatDraw(check) {
     if (!check) return "";
     return check.dice.map((die) => `${die.type}${die.source === "forced" ? " (Forced)" : " (Bag)"}`).join(" / ");
@@ -373,6 +501,7 @@
   }
 
   const api = {
+    activatePerk, setPerkDisabled, advanceScene, editCharacter, setStrain, useStrainRelief, setStoryCharacterCount,
     setSetting,
     addCharacter,
     selectCharacter,
@@ -423,7 +552,7 @@
     },
   };
   // Keep synchronous solo APIs; multiplayer dispatch never writes the solo save.
-  const mutations = ["setSetting", "addCharacter", "selectCharacter", "renameCharacter", "removeCharacter", "resetGame", "importState", "clearLog", "setAct", "addOmenToBag", "removeOmenFromBag", "applyManual", "drawCheck", "rollCheck", "rerollCheck", "chooseRoll", "finishCheck", "cancelCheck", "takeWound", "cheatDeath", "valiantSacrifice", "reviveCharacter", "recordStrain"];
+  const mutations = ["activatePerk", "setPerkDisabled", "advanceScene", "editCharacter", "setStrain", "useStrainRelief", "setStoryCharacterCount", "setSetting", "addCharacter", "selectCharacter", "renameCharacter", "removeCharacter", "resetGame", "importState", "clearLog", "setAct", "addOmenToBag", "removeOmenFromBag", "applyManual", "drawCheck", "rollCheck", "rerollCheck", "chooseRoll", "finishCheck", "cancelCheck", "takeWound", "cheatDeath", "valiantSacrifice", "reviveCharacter", "recordStrain"];
   for (const action of mutations) {
     const local = api[action];
     api[action] = (...args) => mode === "multiplayer" ? transport(action, args, getState()) : local(...args);

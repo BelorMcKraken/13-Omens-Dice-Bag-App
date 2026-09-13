@@ -1,10 +1,11 @@
 (function (root, factory) {
-  const api = factory();
+  const Perks = typeof module === "object" && module.exports ? require("./perks.js") : root.ThirteenOmensPerks;
+  const api = factory(Perks);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   }
   root.ThirteenOmensRules = api;
-})(typeof globalThis !== "undefined" ? globalThis : window, function () {
+})(typeof globalThis !== "undefined" ? globalThis : window, function (Perks) {
   "use strict";
 
   const DIE_SAFE = "SAFE";
@@ -38,12 +39,69 @@
     return character;
   }
 
+  const CORE_NAMES = ["Courage", "Evade", "Fight", "Luck", "Perception"];
+  function defaultAspects() {
+    return [...CORE_NAMES.map(name => ({ id: name.toLowerCase(), type: "core", name, rating: "Average", strained: false })),
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `story-${i + 1}`, type: "story", name: `Story Aspect ${i + 1}`, rating: "Average", strained: false }))];
+  }
+  function getAspect(character, id) { return character.aspects?.find(a => a.id === id); }
+  function findAspect(character, key) { return character.aspects?.find(a => a.id === key || a.name === key); }
+  function setAspectStrain(character, key, value) {
+    const aspect = findAspect(character, key);
+    if (aspect) { aspect.strained = Boolean(value); delete character.strain[aspect.name]; character.strain[aspect.id] = Number(Boolean(value)); }
+    else character.strain[key] = value;
+  }
+  function getDeathThreshold(state, character) {
+    if (Perks.hasPerk(character, "the-truth")) return 2;
+    const count = state.storyCharacterCount;
+    if (!count) return 4; // Standalone legacy rules callers.
+    return count === 6 ? ((state.perishedCharacterIds || []).length >= 2 ? 3 : 2) : ({ 1: 6, 2: 5, 3: 4, 4: 4, 5: 3 })[count];
+  }
+  function getAutomaticWoundFlaw(character) { return !Perks.hasPerk(character, "carry-on") && character.active && character.wounds >= 3 ? 1 : 0; }
+  function getWoundThreshold(character, act) { if (Perks.hasPerk(character, "the-truth")) return 1; return ({ "Act 1": 1, "Act 2": 2, "Act 3": 3 })[act] || 0; }
+  function markPerished(state, character) {
+    if (state.storyCharacterCount) state.perishedCharacterIds = [...new Set([...(state.perishedCharacterIds || []), character.id])];
+    character.active = false;
+  }
+
   function automaticFlawSources(state, aspect, check) {
     const character = getCharacter(state, check);
     return {
-      wounds: character.active && character.wounds >= 3 ? 1 : 0,
-      strain: state.settings && state.settings.autoApplyStrainFlaw && character.strain[aspect] > 0 ? 1 : 0,
+      wounds: getAutomaticWoundFlaw(character),
+      strain: state.settings && state.settings.autoApplyStrainFlaw && (findAspect(character, aspect)?.strained || character.strain[aspect] > 0 || character.strain[findAspect(character, aspect)?.name] > 0) ? 1 : 0,
     };
+  }
+
+  function removeStrain(character, aspectId) {
+    const aspect = getAspect(character, aspectId);
+    if (!aspect?.strained) throw new Error("Choose a currently Strained Aspect.");
+    setAspectStrain(character, aspectId, false);
+  }
+  function refreshCheckModifiers(state, check) {
+    const c = getCharacter(state, check), config = check.configuration;
+    const sources = [
+      {name:'Host awarded',kind:'edge',amount:config.edges},
+      {name:'Host declared',kind:'flaw',amount:config.flaws},
+      {name:'Wound state',kind:'flaw',amount:check.automaticFlaws.wounds},
+      {name:'Strain — '+config.aspect,kind:'flaw',amount:check.automaticFlaws.strain},
+      {name:'Forced Omen',kind:'flaw',amount:Number(config.forcedOmen)}
+    ];
+    if (Perks.hasPerk(c,'chill-out') && config.aspectId==='courage') sources.push({name:'Chill Out',kind:'cancel',amount:1});
+    if (Perks.hasPerk(c,'very-tired') && check.act==='Act 1') sources.push({name:'Very Tired',kind:'cancel',amount:1});
+    for (const a of check.perkActivations || []) if (a.edge || a.cancel) sources.push({name:a.name,kind:a.edge?'edge':'cancel',amount:a.edge||a.cancel});
+    // Track exactly which physical Flaw source was canceled, without removing its die identity.
+    const flaws = sources.filter(s=>s.kind==='flaw').map(s=>({...s,remaining:s.amount}));
+    let canceled=0;
+    for (const s of sources.filter(s=>s.kind==='cancel')) {
+      s.cancels=[]; let remaining=s.amount;
+      for (const f of flaws) {const n=Math.min(remaining,f.remaining);if(n){s.cancels.push({name:f.name,amount:n});f.remaining-=n;remaining-=n;canceled+=n;}}
+      s.amount-=remaining;
+    }
+    check.modifierSources=sources.filter(s=>s.amount);
+    check.composition=calculateCheckComposition({...config,automaticFlaws:check.automaticFlaws.wounds+check.automaticFlaws.strain,
+      perkEdges:sources.filter(s=>s.kind==='edge'&&s.name!=='Host awarded').reduce((n,s)=>n+s.amount,0),canceledFlaws:canceled});
+    check.keepStrategy=(check.perkActivations||[]).some(a=>a.keep)?'highest-plus-lowest':check.composition.resolutionMode==='FLAW'?'lowest-two':check.composition.resolutionMode==='EDGE'?'highest-two':'normal';
+    return check;
   }
 
   function randomInt(min, max) {
@@ -75,7 +133,7 @@
   }
 
   function calculateNetEdgesFlaws(edges, flaws) {
-    const declaredEdges = clampInteger(edges, 0, 2);
+    const declaredEdges = nonnegativeInteger(edges);
     const declaredFlaws = nonnegativeInteger(flaws);
     const net = declaredEdges - declaredFlaws;
     return {
@@ -93,12 +151,12 @@
   }
 
   function calculateCheckComposition(options) {
-    const ordinaryEdges = clampInteger(options.edges, 0, 2);
+    const ordinaryEdges = clampInteger(options.edges, 0, 2) + nonnegativeInteger(options.perkEdges);
     const ordinaryFlaws = clampInteger(options.flaws, 0, 2);
     const automaticFlaws = nonnegativeInteger(options.automaticFlaws);
     const forcedOmenIncluded = Boolean(options.forcedOmen);
     const forcedOmenFlaw = forcedOmenIncluded ? 1 : 0;
-    const totalFlaws = ordinaryFlaws + automaticFlaws + forcedOmenFlaw;
+    const totalFlaws = Math.max(0, ordinaryFlaws + automaticFlaws + forcedOmenFlaw - nonnegativeInteger(options.canceledFlaws));
     const net = calculateNetEdgesFlaws(ordinaryEdges, totalFlaws);
     const totalPhysicalDice = 2 + net.magnitude;
     // Forced Omen is both a real guaranteed die and a Flaw. If an Edge cancels
@@ -134,8 +192,10 @@
   function drawCheckDice(state, options, rng) {
     const character = getCharacter(state);
     if (!character.active) throw new Error("Inactive characters cannot make Checks. Reactivate through Host Tools first.");
-    const automaticFlaws = automaticFlawSources(state, options.aspect || "Average");
-    const composition = calculateCheckComposition({ ...options, automaticFlaws: automaticFlaws.wounds + automaticFlaws.strain });
+    const automaticFlaws = options.automaticFlawSnapshot || automaticFlawSources(state, options.aspectId || options.aspect || "Average");
+    const modifierCheck = {characterId:character.id,act:state.act,configuration:options,automaticFlaws,perkActivations:[]};
+    refreshCheckModifiers(state,modifierCheck);
+    const composition = options.compositionSnapshot || modifierCheck.composition;
     if (composition.bagDiceToDraw > state.bag.safe + state.bag.omen) {
       throw new Error(`Insufficient dice in bag: need ${composition.bagDiceToDraw}, have ${state.bag.safe + state.bag.omen}.`);
     }
@@ -152,9 +212,11 @@
       characterId: character.id,
       characterName: character.name,
       act: state.act,
+      woundThreshold: getWoundThreshold(character, state.act),
       automaticFlaws,
       configuration: {
         aspect: options.aspect || "Average",
+        ...(options.aspectId ? { aspectId: options.aspectId, rating: options.rating } : {}),
         baseTn: clampInteger(options.baseTn, 1, 30),
         difficultyModifier: clampInteger(options.difficultyModifier, -10, 10),
         edges: clampInteger(options.edges, 0, 2),
@@ -164,6 +226,7 @@
         harmless: Boolean(options.harmless),
       },
       composition,
+      sceneNumber: state.sceneNumber, modifierSources: modifierCheck.modifierSources, keepStrategy: modifierCheck.keepStrategy, perkActivations: [],
       dice,
       originalRoll: null,
       reroll: null,
@@ -191,7 +254,8 @@
   function selectDiceForTotal(rolledDice, netMode) {
     const decorated = rolledDice.map((die, index) => ({ die, index }));
     let sorted;
-    if (netMode === "EDGE") sorted = decorated.slice().sort((a, b) => b.die.result - a.die.result || a.index - b.index);
+    if (netMode === "highest-plus-lowest") { const ranked = decorated.slice().sort((a,b)=>a.die.result-b.die.result||a.index-b.index); sorted = [ranked[ranked.length-1], ranked[0]]; }
+    else if (netMode === "EDGE") sorted = decorated.slice().sort((a, b) => b.die.result - a.die.result || a.index - b.index);
     else if (netMode === "FLAW") sorted = decorated.slice().sort((a, b) => a.die.result - b.die.result || a.index - b.index);
     else sorted = decorated.slice(0, 2);
     const usedIndexes = new Set(sorted.slice(0, 2).map((entry) => entry.index));
@@ -221,8 +285,8 @@
     return 0;
   }
 
-  function detectWound(rolledDice, act) {
-    const threshold = woundThresholdForAct(act);
+  function detectWound(rolledDice, act, snapshot) {
+    const threshold = snapshot ?? woundThresholdForAct(act);
     if (threshold === 0) return { triggered: false, qualifyingDice: [], selectedWoundDie: null, threshold };
     const qualifyingDice = rolledDice
       .map((die, index) => ({ ...die, index }))
@@ -242,10 +306,10 @@
   }
 
   function buildRoll(check, act, dice, label) {
-    const selectedDice = selectDiceForTotal(dice, check.composition.resolutionMode);
+    const selectedDice = selectDiceForTotal(dice, check.keepStrategy === "highest-plus-lowest" ? check.keepStrategy : check.composition.resolutionMode);
     const total = totalUsedDice(selectedDice);
     const result = determineCheckResult(total, check.finalTn);
-    const wound = detectWound(selectedDice, check.act || act);
+    const wound = detectWound(selectedDice, check.act || act, check.woundThreshold);
     const markedDice = selectedDice.map((die, index) => ({
       ...die,
       woundCandidate: wound.qualifyingDice.some((candidate) => candidate.index === index),
@@ -302,6 +366,7 @@
     return Boolean(
       getCharacter(state, check).active &&
         !getCharacter(state, check).cheatDeathUsed &&
+        !Perks.hasPerk(getCharacter(state, check), "the-truth") &&
         dice.some((die) => die.type === DIE_SAFE && die.source === "bag") &&
         state.bag.safe > 0 &&
         (!roll || roll.wound.triggered)
@@ -326,11 +391,11 @@
     if (woundDie.source === "bag") next.bag.omen = Math.max(0, next.bag.omen - 1);
     if (forcedOmenShouldEnterBag(check, woundDie.source)) next.bag.omen += 1;
     getCharacter(next, check).wounds += 1;
-    if (getCharacter(next, check).wounds >= 4) {
+    if (getCharacter(next, check).wounds >= getDeathThreshold(next, getCharacter(next, check))) {
       const returnedWounds = getCharacter(next, check).wounds;
       next.bag.omen += returnedWounds;
       getCharacter(next, check).wounds = 0;
-      getCharacter(next, check).active = false;
+      markPerished(next, getCharacter(next, check));
       getCharacter(next, check).statusMessage = "Death/despair claimed the character. Wound Omens returned to the bag.";
     }
     return next;
@@ -349,7 +414,7 @@
   function resolveHarmless(state, check, aspect) {
     const next = clone(state);
     const name = aspect || "Unassigned";
-    getCharacter(next, check).strain[name] = (getCharacter(next, check).strain[name] || 0) + 1;
+    setAspectStrain(getCharacter(next, check), check.configuration.aspectId || name, 1);
     if (forcedOmenShouldEnterBag(check, null)) next.bag.omen += 1;
     return next;
   }
@@ -361,7 +426,7 @@
     next.bag.omen += woundOmens;
     if (check.forcedOmenCommitted) next.bag.omen += 1;
     getCharacter(next, check).wounds = 0;
-    getCharacter(next, check).active = false;
+    markPerished(next, getCharacter(next, check));
     getCharacter(next, check).statusMessage = "Valiant Sacrifice: automatic success, character removed from play.";
     return next;
   }
@@ -385,6 +450,7 @@
   }
 
   return {
+    Perks, refreshCheckModifiers, removeStrain, CORE_NAMES, defaultAspects, getAspect, findAspect, setAspectStrain, getDeathThreshold, getAutomaticWoundFlaw, getWoundThreshold, markPerished,
     getCharacter,
     automaticFlawSources,
     DIE_SAFE,

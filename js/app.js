@@ -7,7 +7,7 @@
   const els = {};
 
   document.addEventListener("DOMContentLoaded", init);
-  window.ThirteenOmensApp = { render, checkMarkup };
+  window.ThirteenOmensApp = { render, checkMarkup, updateCheckMath };
 
   function init() {
     [
@@ -152,7 +152,6 @@
       aspect: els.aspectName.value.trim() || els.aspect.value,
       rating: els.aspect.value,
       manualTn: els.manualTn.checked,
-      allowPlayerRating: els.allowPlayerRating.checked,
       baseTn,
       difficultyModifier: Number(els.difficulty.value),
       edges: Number(els.edgeCount.value),
@@ -160,6 +159,7 @@
       forcedOmen: els.forcedOmen.checked,
       risky: els.risky.checked,
       harmless: els.harmless.checked,
+      ...(window.ThirteenOmensSheet?.options(Store.getState(), els.manualTn.checked, els.baseTn.value) || {}),
     };
   }
 
@@ -168,13 +168,14 @@
     const options = getCheckOptions();
     els.baseTn.value = Rules.clampInteger(options.baseTn, 1, 30);
     els.baseTn.disabled = !els.manualTn.checked;
-    const sources = Rules.automaticFlawSources(state, options.aspect);
+    const sources = Rules.automaticFlawSources(state, options.aspectId || options.aspect);
     const automaticFlaws = sources.wounds + sources.strain;
-    const composition = Rules.calculateCheckComposition({ ...options, automaticFlaws });
+    const preview=Rules.refreshCheckModifiers(state,{characterId:state.selectedCharacterId,act:state.act,configuration:options,automaticFlaws:sources,perkActivations:[]});
+    const composition = preview.composition;
     els.finalTn.textContent = Rules.determineFinalTN(options.baseTn, options.difficultyModifier);
     els.declaredEdges.textContent = options.edges;
     els.declaredFlaws.textContent = options.flaws;
-    els.automaticSources.textContent = [sources.wounds ? "+1 from 3 Wounds" : "", sources.strain ? `+1 from ${options.aspect} Strain` : "", options.forcedOmen ? "+1 Forced Omen" : ""].filter(Boolean).join("; ") || "None";
+    els.automaticSources.textContent = [sources.wounds ? "+1 from 3 Wounds" : "", sources.strain ? `+1 from ${options.aspect} Strain` : "", options.forcedOmen ? "+1 Forced Omen" : "", ...preview.modifierSources.filter(s=>s.kind==="cancel").map(s=>`−${s.amount} ${s.name}`)].filter(Boolean).join("; ") || "None";
     els.totalFlaws.textContent = composition.totalFlaws;
     els.netResult.textContent =
       composition.resolutionMode === "NORMAL"
@@ -224,6 +225,9 @@
   function render() {
     const state = Store.getState();
     renderCharacters(state);
+    window.ThirteenOmensPerkUI?.render(document.getElementById("soloPerks"),state);
+    window.ThirteenOmensSheet?.configure(state);
+    window.ThirteenOmensSheet?.render(document.getElementById("hostSheet"), state, Rules.getCharacter(state), true, window.ThirteenOmensMultiplayer?.assignment(state.selectedCharacterId) || "Unassigned");
     const pending = Store.hasUnresolvedCheck(state);
     els.actSelect.disabled = pending && state.settings.lockActDuringPendingCheck;
     els.manualAct.disabled = pending && state.settings.lockActDuringPendingCheck;
@@ -240,9 +244,9 @@
     els.totalBag.textContent = state.bag.safe + state.bag.omen;
     els.safePips.innerHTML = pips(state.bag.safe, "safe-dot");
     els.omenPips.innerHTML = pips(state.bag.omen, "omen-dot");
-    els.woundPips.innerHTML = woundPips(Rules.getCharacter(state).wounds);
-    els.autoFlaw.textContent = Rules.getCharacter(state).wounds >= 3 && Rules.getCharacter(state).active ? "Yes, +1 Flaw" : "No";
-    els.cheatStatus.textContent = Rules.getCharacter(state).cheatDeathUsed ? "Used" : "Available";
+    els.woundPips.innerHTML = woundPips(Rules.getCharacter(state).wounds, Rules.getDeathThreshold(state, Rules.getCharacter(state)));
+    els.autoFlaw.textContent = Rules.getAutomaticWoundFlaw(Rules.getCharacter(state)) ? "Yes, +1 Flaw" : "No";
+    els.cheatStatus.textContent = Rules.Perks.hasPerk(Rules.getCharacter(state),"the-truth") ? "Forbidden — The Truth" : Rules.getCharacter(state).cheatDeathUsed ? "Used" : "Available";
     els.characterStatus.textContent = Rules.getCharacter(state).active ? "Active" : "Dead / Despair";
     els.characterStatus.className = Rules.getCharacter(state).active ? "status-active" : "status-dead";
     els.manualSafe.value = state.bag.safe;
@@ -267,7 +271,7 @@
     state.characters.forEach((character) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = `${character.name} · ${character.wounds} Wounds · ${character.active ? "Active" : "Inactive"}`;
+      button.textContent = `${character.name} · ${character.archetype || "No archetype"} · ${character.wounds}/${Rules.getDeathThreshold(state, character)} Wounds · ${character.aspects.filter(a => a.strained).length} Strained · ${character.active ? "Active" : "FALLEN"} · ${window.ThirteenOmensMultiplayer?.assignment(character.id) || "Unassigned"}`;
       button.setAttribute("aria-pressed", String(character.id === selected.id));
       button.disabled = pending;
       button.addEventListener("click", () => safeAction(() => Store.selectCharacter(character.id)));
@@ -314,15 +318,15 @@
     return Array.from({ length: count }, () => `<span class="pip ${className}" aria-hidden="true"></span>`).join("");
   }
 
-  function woundPips(count) {
-    return Array.from({ length: 4 }, (_, index) =>
+  function woundPips(count, threshold) {
+    return Array.from({ length: threshold }, (_, index) =>
       `<span class="wound-dot ${index < count ? "filled" : ""}" aria-label="${index < count ? "Wound" : "Empty wound slot"}"></span>`
     ).join("");
   }
 
   function checkMarkup(check) {
     if (!check) return '<p class="muted">No Check pending.</p>';
-    if (check.phase === Rules.PHASE_REQUESTED) return '<div class="notice calm"><strong>THE HOST CALLS FOR A CHECK.</strong> Confirm the Rating when allowed, then reach into the bag. No dice have been drawn.</div>';
+    if (check.phase === Rules.PHASE_REQUESTED) return '<div class="notice calm"><strong>THE HOST CALLS FOR A CHECK.</strong> The Rating and TN come from the character sheet. Reach into the bag when ready. No dice have been drawn.</div>';
     if (check.phase === Rules.PHASE_DRAWN) return `
       <div class="notice calm"><strong>DRAWN FROM THE BAG:</strong> dice types are known. No d6 results have been rolled.</div>
       <div class="dice-row">${check.dice.map(dieCard).join("")}</div>
@@ -357,8 +361,8 @@
     if (check.valiantResolved) return;
     const selected = Rules.getSelectedRoll(check);
     $("#reroll").disabled = !check.originalRoll || Boolean(check.reroll) || check.phase === Rules.PHASE_RESOLVED;
-    $("#useOriginal").disabled = !check.reroll || check.selectedRoll === "original" || check.phase === Rules.PHASE_RESOLVED;
-    $("#useReroll").disabled = !check.reroll || check.selectedRoll === "reroll" || check.phase === Rules.PHASE_RESOLVED;
+    $("#useOriginal").disabled = !check.reroll || check.perkReroll || check.selectedRoll === "original" || check.phase === Rules.PHASE_RESOLVED;
+    $("#useReroll").disabled = !check.reroll || check.perkReroll || check.selectedRoll === "reroll" || check.phase === Rules.PHASE_RESOLVED;
     $("#finishCheck").disabled = check.phase === Rules.PHASE_RESOLVED || (selected.wound.triggered && !check.configuration.harmless);
     $("#takeWound").disabled = !selected.wound.triggered || check.configuration.harmless || check.phase === Rules.PHASE_RESOLVED;
     $("#cheatDeath").disabled = !selected.wound.triggered || check.configuration.harmless || !Rules.canCheatDeath(state, check) || check.phase === Rules.PHASE_RESOLVED;

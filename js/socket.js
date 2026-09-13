@@ -100,7 +100,7 @@
 
     async function mutate(event, payload) {
       if (status !== "connected" || !active) throw new Error("Server connection lost. Wait for reconnection before changing the game.");
-      if ((!event.startsWith("check:") || ["check:create", "check:cancel", "check:takeover"].includes(event)) && me()?.role !== "HOST") throw new Error("Host permission required.");
+      if ((!event.startsWith("perk:") && !event.startsWith("check:") || ["check:create", "check:cancel", "check:takeover"].includes(event)) && me()?.role !== "HOST") throw new Error("Host permission required.");
       if (busy) throw new Error("Wait for the current action to finish.");
       busy = true; error = ""; notify();
       try {
@@ -117,6 +117,12 @@
     }
 
     function dispatch(action, args, snapshot) {
+      if(action==='advanceScene')return mutate('scene:advance',{baseVersion:room.gameVersion});
+      if(action==='activatePerk'||action==='setPerkDisabled') {
+        const pending=snapshot.currentCheck&&snapshot.currentCheck.phase!=='RESOLVED';
+        const event=action==='setPerkDisabled'?(args[2]?'perk:disable':'perk:restore'):args[2]?'perk:strain-remove':'perk:activate';
+        return mutate(event,{baseVersion:room.gameVersion,characterId:args[0],perkId:args[1],...(pending?{checkId:snapshot.currentCheck.id}:{}),...(event==='perk:strain-remove'?{aspectId:args[2]}:{})});
+      }
       if (Object.hasOwn(CHECK_EVENTS, action)) {
         if (action !== "chooseRoll" && args.length) return Promise.reject(new Error("Multiplayer Check actions accept no client dice or randomness."));
         return checkAction(CHECK_EVENTS[action], action === "chooseRoll" ? { rollName: args[0] } : {});

@@ -27,7 +27,7 @@ function app(saved) {
   const context = { document, console, alert: message => errors.push(message), confirm: () => true, localStorage: { getItem: () => saved || null, setItem: (_, value) => saved = value } };
   context.window = context;
   vm.createContext(context);
-  for (const file of ['rules', 'state', 'app']) vm.runInContext(fs.readFileSync(path.join(root, `js/${file}.js`), 'utf8'), context);
+  for (const file of ['perks', 'rules', 'state', 'app']) vm.runInContext(fs.readFileSync(path.join(root, `js/${file}.js`), 'utf8'), context);
   document.ready();
   return { e: elements, errors, store: context.ThirteenOmensState, saved: () => saved,
     change(id, value) { elements[id].value = value; elements[id].events.change?.(); },

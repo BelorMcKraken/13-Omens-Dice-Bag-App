@@ -18,7 +18,7 @@ function createServer({ log = console.log, rng } = {}) {
   app.get(["/", "/index.html"], (_, res) => res.sendFile(path.join(root, "index.html")));
   app.use("/js", express.static(path.join(root, "js")));
   app.use("/css", express.static(path.join(root, "css")));
-  app.get("/health", (_, res) => res.json({ ok: true, mode: "multiplayer-pass-2" }));
+  app.get("/health", (_, res) => res.json({ ok: true, mode: "multiplayer-pass-4" }));
   return { app, server, io, manager };
 }
 

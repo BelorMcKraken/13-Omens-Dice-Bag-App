@@ -1,5 +1,6 @@
 "use strict";
 const { RoomError } = require("./room-manager.js");
+const {handlePerk, EVENTS:PERK_EVENTS}=require("./perk-manager");
 const { EVENTS } = require("./check-manager.js");
 
 function registerSocketHandlers(io, manager) {
@@ -38,6 +39,7 @@ function registerSocketHandlers(io, manager) {
         return { room: manager.snapshot(room) };
       });
     }
+    for (const event of PERK_EVENTS) handle(event,payload=>{const room=handlePerk(manager,socket.id,event,payload);broadcast(room);return {room:manager.snapshot(room)};});
     for (const event of EVENTS) {
       handle(event, (payload) => {
         const room = manager.checks.handle(socket.id, event, payload);
